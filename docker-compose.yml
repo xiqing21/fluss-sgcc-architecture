@@ -58,29 +58,7 @@ services:
     networks:
       - fluss-sgcc-network
 
-  # ========================================
-  # MySQL 目标数据库（数仓分层结果存储）
-  # ========================================
-  mysql-sgcc-sink:
-    image: mysql:8.0
-    hostname: mysql-sgcc-sink
-    container_name: mysql-sgcc-sink
-    ports:
-      - "3306:3306"
-    environment:
-      MYSQL_ROOT_PASSWORD: sgcc_root_pass_2024
-      MYSQL_DATABASE: sgcc_dw_db
-      MYSQL_USER: sgcc_user
-      MYSQL_PASSWORD: sgcc_pass_2024
-    volumes:
-      - mysql_sink_data:/var/lib/mysql
-    healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
-      interval: 30s
-      timeout: 10s
-      retries: 5
-    networks:
-      - fluss-sgcc-network
+# MySQL配置已移除，统一使用PostgreSQL作为目标数据库
 
   # ========================================
   # ZooKeeper（Fluss依赖）
@@ -179,8 +157,6 @@ services:
       postgres-sgcc-source:
         condition: service_healthy
       postgres-sgcc-sink:
-        condition: service_healthy
-      mysql-sgcc-sink:
         condition: service_healthy
     environment:
       - |
@@ -338,9 +314,6 @@ volumes:
   postgres_sgcc_sink_data:
     name: postgres_sgcc_sink_data
   
-  # MySQL数据卷
-  mysql_sink_data:
-    name: mysql_sink_data
   
   # Fluss数据卷
   fluss_coordinator_data:

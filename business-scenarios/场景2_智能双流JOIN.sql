@@ -418,9 +418,27 @@ FROM fluss_catalog.fluss.ads_alarm_intelligence_report;
 -- 9. 数据增删改测试查询
 -- ===============================================
 
-/*
--- 查看PostgreSQL中的告警智能分析结果
-SELECT * FROM postgres_alarm_intelligence_result ORDER BY report_time DESC LIMIT 10;
+-- ===============================================
+-- 🎯 增删改查监控测试 + 验证逻辑
+-- ===============================================
+
+-- 📊 【监控 1】双流JOIN初始状态
+SELECT '=== 🎯 场景2：双流JOIN数据监控 ===' as monitor_title;
+
+-- 查看告警与设备JOIN数据量
+SELECT 'JOIN结果统计' as metric, COUNT(*) as join_count FROM fluss_catalog.fluss.dwd_alarm_device_detail;
+
+-- 查看各层数据量
+SELECT '告警原始数据' as layer, COUNT(*) as record_count FROM fluss_catalog.fluss.ods_alarm_raw
+UNION ALL
+SELECT '设备状态数据' as layer, COUNT(*) as record_count FROM fluss_catalog.fluss.ods_device_status_raw
+UNION ALL
+SELECT 'JOIN明细数据' as layer, COUNT(*) as record_count FROM fluss_catalog.fluss.dwd_alarm_device_detail
+UNION ALL
+SELECT '告警汇总数据' as layer, COUNT(*) as record_count FROM fluss_catalog.fluss.dws_alarm_summary;
+
+-- 📊 【监控 2】双流JOIN效果分析
+SELECT '=== 📊 双流JOIN质量监控 ===' as monitor_title;
 
 -- 查看双流JOIN效果
 SELECT 
@@ -432,17 +450,187 @@ FROM fluss_catalog.fluss.dwd_alarm_device_detail
 GROUP BY location
 ORDER BY avg_risk DESC;
 
--- 测试告警数据更新
-UPDATE fluss_catalog.fluss.ods_alarm_raw 
-SET alarm_level = 'CRITICAL' 
-WHERE alarm_id = '1';
+-- 查看风险等级分布
+SELECT 
+    severity_level,
+    COUNT(*) as alarm_count,
+    AVG(risk_score) as avg_risk
+FROM fluss_catalog.fluss.dwd_alarm_device_detail 
+GROUP BY severity_level
+ORDER BY avg_risk DESC;
 
--- 测试设备状态删除
-DELETE FROM fluss_catalog.fluss.ods_device_status_raw 
-WHERE device_id = '100001';
+-- 🔥 【测试 1】增加操作 - 插入测试告警数据
+SELECT '=== 🔥 增加操作测试 ===' as test_title;
+
+-- 创建PostgreSQL告警源数据连接（对应device_alarm_stream CDC源）
+CREATE TABLE postgres_source_alarm_data (
+    alarm_id STRING,
+    device_id STRING,
+    alarm_level STRING,
+    alarm_message STRING,
+    risk_score DOUBLE,
+    alarm_time TIMESTAMP(3),
+    PRIMARY KEY (alarm_id) NOT ENFORCED
+) WITH (
+    'connector' = 'jdbc',
+    'url' = 'jdbc:postgresql://postgres-sgcc-source:5432/sgcc_source_db',
+    'table-name' = 'device_alarm_data',
+    'username' = 'sgcc_user',
+    'password' = 'sgcc_pass_2024'
+);
+
+-- 创建PostgreSQL设备状态源数据连接（对应device_status_stream CDC源）
+CREATE TABLE postgres_source_device_status_data (
+    device_id STRING,
+    device_status STRING,
+    health_score DOUBLE,
+    operational_efficiency DOUBLE,
+    status_time TIMESTAMP(3),
+    PRIMARY KEY (device_id) NOT ENFORCED
+) WITH (
+    'connector' = 'jdbc',
+    'url' = 'jdbc:postgresql://postgres-sgcc-source:5432/sgcc_source_db',
+    'table-name' = 'device_status_data',
+    'username' = 'sgcc_user',
+    'password' = 'sgcc_pass_2024'
+);
+
+-- 向PostgreSQL源插入告警测试数据（会被device_alarm_stream CDC捕获）
+INSERT INTO postgres_source_alarm_data VALUES
+('ALARM_TEST001', 'TEST001', 'CRITICAL', '高温告警测试', 95.5, CURRENT_TIMESTAMP),
+('ALARM_TEST002', 'TEST002', 'HIGH', '电压异常测试', 85.2, CURRENT_TIMESTAMP),
+('ALARM_TEST003', 'TEST003', 'MEDIUM', '效率下降测试', 75.8, CURRENT_TIMESTAMP);
+
+-- 向PostgreSQL源插入设备状态测试数据（会被device_status_stream CDC捕获）
+INSERT INTO postgres_source_device_status_data VALUES
+('TEST001', 'FAULT', 55.2, 0.85, CURRENT_TIMESTAMP),
+('TEST002', 'WARNING', 78.5, 0.90, CURRENT_TIMESTAMP),
+('TEST003', 'NORMAL', 68.3, 0.95, CURRENT_TIMESTAMP);
+
+-- 验证插入结果
+SELECT 'ODS告警新增验证' as verification, COUNT(*) as new_records 
+FROM fluss_catalog.fluss.ods_alarm_raw 
+WHERE alarm_id LIKE 'ALARM_TEST%';
+
+SELECT 'ODS设备状态新增验证' as verification, COUNT(*) as new_records 
+FROM fluss_catalog.fluss.ods_device_status_raw 
+WHERE device_id LIKE 'TEST%';
+
+-- 🔄 【测试 2】更新操作测试  
+SELECT '=== 🔄 更新操作测试 ===' as test_title;
+
+-- 更新前状态查询（PostgreSQL源）
+SELECT 'UPDATE前PostgreSQL告警状态' as status, alarm_id, alarm_level, risk_score
+FROM postgres_source_alarm_data 
+WHERE alarm_id = 'ALARM_TEST001';
+
+-- 在PostgreSQL源执行告警数据更新（会被device_alarm_stream CDC捕获）
+UPDATE postgres_source_alarm_data 
+SET alarm_level = 'CRITICAL', risk_score = 99.9 
+WHERE alarm_id = 'ALARM_TEST001';
+
+-- 更新后验证
+SELECT 'UPDATE后告警验证' as status, alarm_id, alarm_level, risk_score
+FROM fluss_catalog.fluss.ods_alarm_raw 
+WHERE alarm_id = 'ALARM_TEST001';
+
+-- 更新设备状态
+UPDATE fluss_catalog.fluss.ods_device_status_raw 
+SET device_status = 'CRITICAL', health_score = 45.0
+WHERE device_id = 'TEST001';
+
+-- 设备状态更新验证
+SELECT 'UPDATE设备状态验证' as status, device_id, device_status, health_score
+FROM fluss_catalog.fluss.ods_device_status_raw 
+WHERE device_id = 'TEST001';
+
+-- ❌ 【测试 3】删除操作测试
+SELECT '=== ❌ 删除操作测试 ===' as test_title;
+
+-- 删除前统计
+SELECT 'DELETE前告警统计' as phase, COUNT(*) as total_count 
+FROM fluss_catalog.fluss.ods_alarm_raw;
+
+-- 在PostgreSQL源执行设备状态删除（会被device_status_stream CDC捕获）
+DELETE FROM postgres_source_device_status_data 
+WHERE device_id = 'TEST003';
+
+-- 在PostgreSQL源删除告警数据（会被device_alarm_stream CDC捕获）
+DELETE FROM postgres_source_alarm_data 
+WHERE alarm_id = 'ALARM_TEST003';
+
+-- 删除后验证
+SELECT 'DELETE后验证(应为0)' as verification, COUNT(*) as should_be_zero 
+FROM fluss_catalog.fluss.ods_alarm_raw 
+WHERE alarm_id = 'ALARM_TEST003';
+
+SELECT 'DELETE设备状态验证(应为0)' as verification, COUNT(*) as should_be_zero 
+FROM fluss_catalog.fluss.ods_device_status_raw 
+WHERE device_id = 'TEST003';
+
+-- 📈 【监控 3】JOIN性能监控
+SELECT '=== 📈 JOIN性能监控 ===' as monitor_title;
 
 -- 验证JOIN结果变化
-SELECT COUNT(*) as updated_joins 
-FROM fluss_catalog.fluss.dwd_alarm_device_detail 
-WHERE severity_level = 'CRITICAL';
-*/ 
+SELECT 'JOIN结果分析' as metric, 
+       COUNT(*) as total_joins,
+       COUNT(CASE WHEN severity_level = 'CRITICAL' THEN 1 END) as critical_joins,
+       AVG(risk_score) as avg_risk_score
+FROM fluss_catalog.fluss.dwd_alarm_device_detail;
+
+-- JOIN数据一致性检查
+SELECT 'JOIN一致性检查' as consistency_check,
+       alarm_count,
+       device_count,
+       join_count,
+       CASE WHEN join_count <= alarm_count AND join_count <= device_count THEN '✅ JOIN一致' ELSE '❌ JOIN异常' END as status
+FROM (
+    SELECT 
+        (SELECT COUNT(*) FROM fluss_catalog.fluss.ods_alarm_raw WHERE alarm_id NOT LIKE 'ALARM_TEST%') as alarm_count,
+        (SELECT COUNT(*) FROM fluss_catalog.fluss.ods_device_status_raw WHERE device_id NOT LIKE 'TEST%') as device_count,
+        (SELECT COUNT(*) FROM fluss_catalog.fluss.dwd_alarm_device_detail WHERE alarm_id NOT LIKE 'ALARM_TEST%') as join_count
+);
+
+-- 📋 【监控 4】最终结果验证
+SELECT '=== 📋 最终结果验证 ===' as monitor_title;
+
+-- 查看PostgreSQL中的告警智能分析结果
+SELECT '最终告警分析结果' as result_type, 
+       location, 
+       total_alarms, 
+       critical_count,
+       avg_risk_score,
+       intelligence_level,
+       report_time
+FROM postgres_alarm_intelligence_result 
+ORDER BY report_time DESC 
+LIMIT 10;
+
+-- 🎯 【总结】场景2测试完成状态
+SELECT '=== 🎯 场景2测试完成总结 ===' as summary_title;
+
+SELECT 
+    '双流JOIN完整性' as metric,
+    CONCAT('告警:', alarm_count, ' | 设备:', device_count, ' | JOIN:', join_count, ' | PostgreSQL:', pg_count) as layer_counts
+FROM (
+    SELECT 
+        (SELECT COUNT(*) FROM fluss_catalog.fluss.ods_alarm_raw) as alarm_count,
+        (SELECT COUNT(*) FROM fluss_catalog.fluss.ods_device_status_raw) as device_count,
+        (SELECT COUNT(*) FROM fluss_catalog.fluss.dwd_alarm_device_detail) as join_count,
+        (SELECT COUNT(*) FROM postgres_alarm_intelligence_result) as pg_count
+);
+
+-- ✅ 【验证】增删改查操作成功验证
+SELECT '增删改查验证结果' as final_verification,
+       CASE 
+           WHEN (SELECT COUNT(*) FROM fluss_catalog.fluss.ods_alarm_raw WHERE alarm_id = 'ALARM_TEST001') = 1 THEN '✅ 增加成功'
+           ELSE '❌ 增加失败'
+       END as insert_status,
+       CASE 
+           WHEN (SELECT risk_score FROM fluss_catalog.fluss.ods_alarm_raw WHERE alarm_id = 'ALARM_TEST001') = 99.9 THEN '✅ 更新成功'
+           ELSE '❌ 更新失败'
+       END as update_status,
+       CASE 
+           WHEN (SELECT COUNT(*) FROM fluss_catalog.fluss.ods_alarm_raw WHERE alarm_id = 'ALARM_TEST003') = 0 THEN '✅ 删除成功'
+           ELSE '❌ 删除失败'
+       END as delete_status; 

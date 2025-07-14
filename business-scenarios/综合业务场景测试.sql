@@ -474,22 +474,232 @@ WHERE efficiency_rate < 0.95
 ORDER BY efficiency_rate ASC, real_time_temperature DESC
 LIMIT 50;
 
--- 测试电力调度数据更新
-UPDATE fluss_catalog.fluss.ods_power_dispatch_raw 
-SET emergency_level = 'CRITICAL', load_balance_status = 'IMBALANCED' 
-WHERE dispatch_id = '1';
+-- ===============================================
+-- 🎯 增删改查监控测试 + 验证逻辑 (CDC源头)
+-- ===============================================
 
--- 测试设备维度数据删除
-DELETE FROM fluss_catalog.fluss.ods_device_dimension_raw 
-WHERE device_id = '100001';
+-- 📊 【监控 1】综合业务初始状态
+SELECT '=== 🎯 综合业务场景：智能电网数据监控 ===' as monitor_title;
+
+-- 查看各层数据量
+SELECT '电力调度数据' as layer, COUNT(*) as record_count FROM fluss_catalog.fluss.ods_power_dispatch_raw
+UNION ALL
+SELECT '设备维度数据' as layer, COUNT(*) as record_count FROM fluss_catalog.fluss.ods_device_dimension_raw
+UNION ALL
+SELECT '智能电网明细' as layer, COUNT(*) as record_count FROM fluss_catalog.fluss.dwd_smart_grid_detail
+UNION ALL
+SELECT '电网运行汇总' as layer, COUNT(*) as record_count FROM fluss_catalog.fluss.dws_grid_operation_summary
+UNION ALL
+SELECT '综合分析报表' as layer, COUNT(*) as record_count FROM fluss_catalog.fluss.ads_smart_grid_comprehensive_report;
+
+-- 🔥 【测试 1】增加操作 - 从PostgreSQL源头插入测试数据
+SELECT '=== 🔥 增加操作测试（CDC源头）===' as test_title;
+
+-- 创建PostgreSQL电力调度数据插入连接
+CREATE TABLE postgres_dispatch_insert (
+    dispatch_id STRING,
+    grid_region STRING,
+    dispatch_time TIMESTAMP(3),
+    load_demand_mw DOUBLE,
+    supply_capacity_mw DOUBLE,
+    emergency_level STRING,
+    load_balance_status STRING,
+    grid_frequency_hz DOUBLE,
+    voltage_stability DOUBLE,
+    PRIMARY KEY (dispatch_id) NOT ENFORCED
+) WITH (
+    'connector' = 'jdbc',
+    'url' = 'jdbc:postgresql://postgres-sgcc-source:5432/sgcc_source_db',
+    'table-name' = 'power_dispatch_data',
+    'username' = 'sgcc_user',
+    'password' = 'sgcc_pass_2024'
+);
+
+-- 创建PostgreSQL设备维度数据插入连接
+CREATE TABLE postgres_device_dimension_insert (
+    device_id STRING,
+    device_name STRING,
+    device_type STRING,
+    location STRING,
+    capacity_mw DOUBLE,
+    installation_date TIMESTAMP(3),
+    manufacturer STRING,
+    model STRING,
+    efficiency_rate DOUBLE,
+    maintenance_status STRING,
+    real_time_voltage DOUBLE,
+    real_time_current DOUBLE,
+    real_time_temperature DOUBLE,
+    PRIMARY KEY (device_id) NOT ENFORCED
+) WITH (
+    'connector' = 'jdbc',
+    'url' = 'jdbc:postgresql://postgres-sgcc-source:5432/sgcc_source_db',
+    'table-name' = 'device_dimension_data',
+    'username' = 'sgcc_user',
+    'password' = 'sgcc_pass_2024'
+);
+
+-- 向PostgreSQL源插入电力调度测试数据
+INSERT INTO postgres_dispatch_insert VALUES
+('DISPATCH_TEST001', '华北电网', CURRENT_TIMESTAMP, 25000.0, 30000.0, 'NORMAL', 'BALANCED', 50.0, 220.5),
+('DISPATCH_TEST002', '华东电网', CURRENT_TIMESTAMP, 35000.0, 32000.0, 'HIGH', 'STRESSED', 49.8, 218.2),
+('DISPATCH_TEST003', '华南电网', CURRENT_TIMESTAMP, 28000.0, 35000.0, 'LOW', 'SURPLUS', 50.2, 221.8);
+
+-- 向PostgreSQL源插入设备维度测试数据
+INSERT INTO postgres_device_dimension_insert VALUES
+('GRID_TEST001', '华北变压器_TEST001', '变压器', '北京', 500.0, CURRENT_TIMESTAMP, '华为', 'HW-T500', 0.96, 'NORMAL', 235.5, 150.0, 45.2),
+('GRID_TEST002', '华东发电机_TEST002', '发电机', '上海', 800.0, CURRENT_TIMESTAMP, '西门子', 'SIE-G800', 0.94, 'WARNING', 228.3, 125.5, 52.7),
+('GRID_TEST003', '华南配电_TEST003', '配电设备', '深圳', 300.0, CURRENT_TIMESTAMP, 'ABB', 'ABB-D300', 0.92, 'MAINTENANCE', 220.1, 180.2, 38.9);
+
+-- 等待CDC同步
+SELECT 'CDC综合同步等待' as status, 'Waiting for comprehensive CDC sync...' as message;
+
+-- 验证电力调度数据CDC同步
+SELECT 'CDC调度数据同步验证' as verification, COUNT(*) as new_records 
+FROM fluss_catalog.fluss.ods_power_dispatch_raw 
+WHERE dispatch_id LIKE 'DISPATCH_TEST%';
+
+-- 验证设备维度数据CDC同步
+SELECT 'CDC设备数据同步验证' as verification, COUNT(*) as new_records 
+FROM fluss_catalog.fluss.ods_device_dimension_raw 
+WHERE device_id LIKE 'GRID_TEST%';
+
+-- 🔄 【测试 2】更新操作测试（CDC源头）
+SELECT '=== 🔄 更新操作测试（CDC源头）===' as test_title;
+
+-- 更新前状态查询
+SELECT 'UPDATE前调度状态' as status, dispatch_id, emergency_level, load_balance_status
+FROM postgres_dispatch_insert 
+WHERE dispatch_id = 'DISPATCH_TEST002';
+
+-- 在PostgreSQL源执行电力调度数据更新
+UPDATE postgres_dispatch_insert 
+SET emergency_level = 'CRITICAL', load_balance_status = 'IMBALANCED', load_demand_mw = 38000.0
+WHERE dispatch_id = 'DISPATCH_TEST002';
+
+-- 更新设备维度数据
+UPDATE postgres_device_dimension_insert 
+SET maintenance_status = 'CRITICAL', efficiency_rate = 0.88, real_time_temperature = 85.5
+WHERE device_id = 'GRID_TEST002';
+
+-- 等待CDC同步更新
+SELECT 'CDC更新同步等待' as status, 'Waiting for CDC update sync...' as message;
+
+-- 验证调度数据更新同步
+SELECT 'UPDATE后调度验证' as status, dispatch_id, emergency_level, load_balance_status, load_demand_mw
+FROM fluss_catalog.fluss.ods_power_dispatch_raw 
+WHERE dispatch_id = 'DISPATCH_TEST002';
+
+-- 验证设备数据更新同步
+SELECT 'UPDATE后设备验证' as status, device_id, maintenance_status, efficiency_rate, real_time_temperature
+FROM fluss_catalog.fluss.ods_device_dimension_raw 
+WHERE device_id = 'GRID_TEST002';
+
+-- ❌ 【测试 3】删除操作测试（CDC源头）
+SELECT '=== ❌ 删除操作测试（CDC源头）===' as test_title;
+
+-- 删除前统计
+SELECT 'DELETE前调度数据统计' as phase, COUNT(*) as total_count 
+FROM postgres_dispatch_insert;
+
+-- 在PostgreSQL源执行删除
+DELETE FROM postgres_dispatch_insert 
+WHERE dispatch_id = 'DISPATCH_TEST003';
+
+-- 删除设备维度数据
+DELETE FROM postgres_device_dimension_insert 
+WHERE device_id = 'GRID_TEST003';
+
+-- 等待CDC同步删除
+SELECT 'CDC删除同步等待' as status, 'Waiting for CDC delete sync...' as message;
+
+-- 验证删除同步
+SELECT 'DELETE调度数据验证(应为0)' as verification, COUNT(*) as should_be_zero 
+FROM fluss_catalog.fluss.ods_power_dispatch_raw 
+WHERE dispatch_id = 'DISPATCH_TEST003';
+
+SELECT 'DELETE设备数据验证(应为0)' as verification, COUNT(*) as should_be_zero 
+FROM fluss_catalog.fluss.ods_device_dimension_raw 
+WHERE device_id = 'GRID_TEST003';
+
+-- 📈 【监控 3】智能电网综合性能监控
+SELECT '=== 📈 智能电网综合性能监控 ===' as monitor_title;
 
 -- 验证综合分析结果变化
 SELECT 
     grid_region,
-    COUNT(*) as updated_analysis,
+    COUNT(*) as analysis_count,
     AVG(grid_stability_index) as avg_stability,
-    COUNT(CASE WHEN risk_assessment LIKE 'CRITICAL%' THEN 1 END) as critical_risks
+    COUNT(CASE WHEN risk_assessment LIKE 'CRITICAL%' THEN 1 END) as critical_risks,
+    AVG(CASE WHEN emergency_response_time IS NOT NULL THEN emergency_response_time ELSE 0 END) as avg_response_time
 FROM fluss_catalog.fluss.ads_smart_grid_comprehensive_report 
 GROUP BY grid_region
-ORDER BY critical_risks DESC;
-*/ 
+ORDER BY critical_risks DESC, avg_stability DESC;
+
+-- 电网负载平衡分析
+SELECT 
+    '电网负载分析' as metric,
+    COUNT(*) as total_dispatches,
+    COUNT(CASE WHEN emergency_level = 'CRITICAL' THEN 1 END) as critical_count,
+    COUNT(CASE WHEN load_balance_status = 'IMBALANCED' THEN 1 END) as imbalanced_count,
+    AVG(load_demand_mw) as avg_demand,
+    AVG(supply_capacity_mw) as avg_supply
+FROM fluss_catalog.fluss.ods_power_dispatch_raw;
+
+-- 设备健康度综合分析
+SELECT 
+    device_type,
+    location,
+    COUNT(*) as device_count,
+    AVG(efficiency_rate) as avg_efficiency,
+    COUNT(CASE WHEN maintenance_status = 'CRITICAL' THEN 1 END) as critical_devices,
+    AVG(real_time_temperature) as avg_temperature
+FROM fluss_catalog.fluss.ods_device_dimension_raw
+GROUP BY device_type, location
+ORDER BY critical_devices DESC, avg_efficiency ASC;
+
+-- 📋 【监控 4】最终结果验证
+SELECT '=== 📋 最终结果验证 ===' as monitor_title;
+
+-- 查看PostgreSQL中的智能电网综合报表结果
+SELECT '智能电网综合报表' as result_type, 
+       grid_region, 
+       total_devices, 
+       avg_efficiency,
+       grid_stability_index,
+       risk_assessment,
+       emergency_response_time,
+       report_time
+FROM postgres_smart_grid_comprehensive_result 
+ORDER BY report_time DESC 
+LIMIT 10;
+
+-- 🎯 【总结】综合业务场景测试完成状态
+SELECT '=== 🎯 综合业务场景测试完成总结 ===' as summary_title;
+
+SELECT 
+    '智能电网数据完整性' as metric,
+    CONCAT('调度:', dispatch_count, ' | 设备:', device_count, ' | 明细:', detail_count, ' | 汇总:', summary_count, ' | 报表:', report_count) as layer_counts
+FROM (
+    SELECT 
+        (SELECT COUNT(*) FROM fluss_catalog.fluss.ods_power_dispatch_raw) as dispatch_count,
+        (SELECT COUNT(*) FROM fluss_catalog.fluss.ods_device_dimension_raw) as device_count,
+        (SELECT COUNT(*) FROM fluss_catalog.fluss.dwd_smart_grid_detail) as detail_count,
+        (SELECT COUNT(*) FROM fluss_catalog.fluss.dws_grid_operation_summary) as summary_count,
+        (SELECT COUNT(*) FROM fluss_catalog.fluss.ads_smart_grid_comprehensive_report) as report_count
+);
+
+-- ✅ 【验证】增删改查操作成功验证
+SELECT '增删改查验证结果' as final_verification,
+       CASE 
+           WHEN (SELECT COUNT(*) FROM fluss_catalog.fluss.ods_power_dispatch_raw WHERE dispatch_id = 'DISPATCH_TEST001') = 1 THEN '✅ 增加成功'
+           ELSE '❌ 增加失败'
+       END as insert_status,
+       CASE 
+           WHEN (SELECT emergency_level FROM fluss_catalog.fluss.ods_power_dispatch_raw WHERE dispatch_id = 'DISPATCH_TEST002') = 'CRITICAL' THEN '✅ 更新成功'
+           ELSE '❌ 更新失败'
+       END as update_status,
+       CASE 
+           WHEN (SELECT COUNT(*) FROM fluss_catalog.fluss.ods_power_dispatch_raw WHERE dispatch_id = 'DISPATCH_TEST003') = 0 THEN '✅ 删除成功'
+           ELSE '❌ 删除失败'
+       END as delete_status; 
