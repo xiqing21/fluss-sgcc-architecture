@@ -8,16 +8,6 @@ SET 'execution.checkpointing.interval' = '60s';
 SET 'table.exec.source.idle-timeout' = '30s';
 
 -- 使用Fluss Catalog
--- 设置执行环境
-SET 'execution.checkpointing.interval' = '60s';
-SET 'table.exec.source.idle-timeout' = '30s';
-
--- 创建Fluss Catalog（每个会话都需要重新创建）
-CREATE CATALOG IF NOT EXISTS fluss_catalog WITH (
-    'type' = 'fluss',
-    'bootstrap.servers' = 'coordinator-server-sgcc:9123'
-);
-
 USE CATALOG fluss_catalog;
 
 -- ========================================
@@ -49,7 +39,9 @@ CREATE TABLE IF NOT EXISTS fluss_dws_equipment_daily_summary (
     abnormal_count INT,
     uptime_hours DECIMAL(6,2),
     utilization_rate DECIMAL(6,4),
-    created_at TIMESTAMP(3),    PRIMARY KEY (summary_id) NOT ENFORCED
+    created_at TIMESTAMP(3),
+    process_time TIMESTAMP(3) METADATA FROM 'timestamp',
+    PRIMARY KEY (summary_id) NOT ENFORCED
 ) WITH (
     'connector' = 'fluss',
     'bootstrap.servers' = 'coordinator-server-sgcc:9123',
@@ -76,7 +68,9 @@ CREATE TABLE IF NOT EXISTS fluss_dws_alarm_daily_summary (
     critical_alarms INT,
     warning_alarms INT,
     info_alarms INT,
-    created_at TIMESTAMP(3),    PRIMARY KEY (summary_id) NOT ENFORCED
+    created_at TIMESTAMP(3),
+    process_time TIMESTAMP(3) METADATA FROM 'timestamp',
+    PRIMARY KEY (summary_id) NOT ENFORCED
 ) WITH (
     'connector' = 'fluss',
     'bootstrap.servers' = 'coordinator-server-sgcc:9123',
@@ -105,7 +99,9 @@ CREATE TABLE IF NOT EXISTS fluss_dws_equipment_hourly_summary (
     monitoring_count INT,
     load_rate DECIMAL(6,4),
     efficiency_score DECIMAL(6,4),
-    created_at TIMESTAMP(3),    PRIMARY KEY (summary_id) NOT ENFORCED
+    created_at TIMESTAMP(3),
+    process_time TIMESTAMP(3) METADATA FROM 'timestamp',
+    PRIMARY KEY (summary_id) NOT ENFORCED
 ) WITH (
     'connector' = 'fluss',
     'bootstrap.servers' = 'coordinator-server-sgcc:9123',
@@ -130,7 +126,9 @@ CREATE TABLE IF NOT EXISTS fluss_dws_power_quality_metrics (
     total_equipment_count INT,
     online_equipment_count INT,
     power_quality_score DECIMAL(6,2),
-    created_at TIMESTAMP(3),    PRIMARY KEY (metric_id) NOT ENFORCED
+    created_at TIMESTAMP(3),
+    process_time TIMESTAMP(3) METADATA FROM 'timestamp',
+    PRIMARY KEY (metric_id) NOT ENFORCED
 ) WITH (
     'connector' = 'fluss',
     'bootstrap.servers' = 'coordinator-server-sgcc:9123',
@@ -281,7 +279,9 @@ CREATE TABLE IF NOT EXISTS fluss_dws_realtime_monitoring (
     monitoring_count INT,
     abnormal_count INT,
     alert_level STRING,
-    created_at TIMESTAMP(3),    PRIMARY KEY (window_id) NOT ENFORCED
+    created_at TIMESTAMP(3),
+    process_time TIMESTAMP(3) METADATA FROM 'timestamp',
+    PRIMARY KEY (window_id) NOT ENFORCED
 ) WITH (
     'connector' = 'fluss',
     'bootstrap.servers' = 'coordinator-server-sgcc:9123',
@@ -337,7 +337,9 @@ CREATE TABLE IF NOT EXISTS fluss_dws_equipment_ranking (
     performance_score DECIMAL(6,2),
     ranking_position INT,
     total_equipment INT,
-    created_at TIMESTAMP(3),    PRIMARY KEY (ranking_id) NOT ENFORCED
+    created_at TIMESTAMP(3),
+    process_time TIMESTAMP(3) METADATA FROM 'timestamp',
+    PRIMARY KEY (ranking_id) NOT ENFORCED
 ) WITH (
     'connector' = 'fluss',
     'bootstrap.servers' = 'coordinator-server-sgcc:9123',

@@ -8,16 +8,6 @@ SET 'execution.checkpointing.interval' = '60s';
 SET 'table.exec.source.idle-timeout' = '30s';
 
 -- 使用Fluss Catalog
--- 设置执行环境
-SET 'execution.checkpointing.interval' = '60s';
-SET 'table.exec.source.idle-timeout' = '30s';
-
--- 创建Fluss Catalog（每个会话都需要重新创建）
-CREATE CATALOG IF NOT EXISTS fluss_catalog WITH (
-    'type' = 'fluss',
-    'bootstrap.servers' = 'coordinator-server-sgcc:9123'
-);
-
 USE CATALOG fluss_catalog;
 
 -- ========================================
@@ -41,7 +31,9 @@ CREATE TABLE IF NOT EXISTS fluss_ads_realtime_dashboard (
     avg_voltage_110kv DECIMAL(8,2),
     avg_frequency DECIMAL(6,3),
     system_status STRING,
-    last_updated TIMESTAMP(3),    PRIMARY KEY (dashboard_id) NOT ENFORCED
+    last_updated TIMESTAMP(3),
+    process_time TIMESTAMP(3) METADATA FROM 'timestamp',
+    PRIMARY KEY (dashboard_id) NOT ENFORCED
 ) WITH (
     'connector' = 'fluss',
     'bootstrap.servers' = 'coordinator-server-sgcc:9123',
@@ -65,7 +57,9 @@ CREATE TABLE IF NOT EXISTS fluss_ads_power_quality_analysis (
     harmonic_distortion_rate DECIMAL(6,4),
     power_quality_score DECIMAL(6,2),
     quality_level STRING,
-    created_at TIMESTAMP(3),    PRIMARY KEY (analysis_id) NOT ENFORCED
+    created_at TIMESTAMP(3),
+    process_time TIMESTAMP(3) METADATA FROM 'timestamp',
+    PRIMARY KEY (analysis_id) NOT ENFORCED
 ) WITH (
     'connector' = 'fluss',
     'bootstrap.servers' = 'coordinator-server-sgcc:9123',
@@ -91,7 +85,9 @@ CREATE TABLE IF NOT EXISTS fluss_ads_equipment_health_assessment (
     remaining_life_days INT,
     maintenance_recommendation STRING,
     assessment_date DATE,
-    created_at TIMESTAMP(3),    PRIMARY KEY (assessment_id) NOT ENFORCED
+    created_at TIMESTAMP(3),
+    process_time TIMESTAMP(3) METADATA FROM 'timestamp',
+    PRIMARY KEY (assessment_id) NOT ENFORCED
 ) WITH (
     'connector' = 'fluss',
     'bootstrap.servers' = 'coordinator-server-sgcc:9123',
@@ -118,7 +114,9 @@ CREATE TABLE IF NOT EXISTS fluss_ads_regional_grid_overview (
     active_alarms INT,
     critical_alarms INT,
     region_status STRING,
-    last_updated TIMESTAMP(3),    PRIMARY KEY (overview_id) NOT ENFORCED
+    last_updated TIMESTAMP(3),
+    process_time TIMESTAMP(3) METADATA FROM 'timestamp',
+    PRIMARY KEY (overview_id) NOT ENFORCED
 ) WITH (
     'connector' = 'fluss',
     'bootstrap.servers' = 'coordinator-server-sgcc:9123',
@@ -143,7 +141,9 @@ CREATE TABLE IF NOT EXISTS fluss_ads_alarm_statistics (
     recurring_alarm_count INT,
     top_alarm_equipment STRING,
     trend_indicator STRING,
-    created_at TIMESTAMP(3),    PRIMARY KEY (stat_id) NOT ENFORCED
+    created_at TIMESTAMP(3),
+    process_time TIMESTAMP(3) METADATA FROM 'timestamp',
+    PRIMARY KEY (stat_id) NOT ENFORCED
 ) WITH (
     'connector' = 'fluss',
     'bootstrap.servers' = 'coordinator-server-sgcc:9123',
@@ -169,7 +169,9 @@ CREATE TABLE IF NOT EXISTS fluss_ads_equipment_performance_metrics (
     energy_consumption_kwh DECIMAL(10,2),
     carbon_emission_kg DECIMAL(10,2),
     cost_efficiency_score DECIMAL(6,2),
-    created_at TIMESTAMP(3),    PRIMARY KEY (metric_id) NOT ENFORCED
+    created_at TIMESTAMP(3),
+    process_time TIMESTAMP(3) METADATA FROM 'timestamp',
+    PRIMARY KEY (metric_id) NOT ENFORCED
 ) WITH (
     'connector' = 'fluss',
     'bootstrap.servers' = 'coordinator-server-sgcc:9123',
@@ -452,7 +454,9 @@ CREATE TABLE IF NOT EXISTS fluss_ads_realtime_alerts (
     equipment_name STRING,
     action_required STRING,
     alert_time TIMESTAMP(3),
-    is_acknowledged BOOLEAN,    PRIMARY KEY (alert_id) NOT ENFORCED
+    is_acknowledged BOOLEAN,
+    process_time TIMESTAMP(3) METADATA FROM 'timestamp',
+    PRIMARY KEY (alert_id) NOT ENFORCED
 ) WITH (
     'connector' = 'fluss',
     'bootstrap.servers' = 'coordinator-server-sgcc:9123',

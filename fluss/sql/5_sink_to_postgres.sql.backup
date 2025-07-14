@@ -8,16 +8,6 @@ SET 'execution.checkpointing.interval' = '60s';
 SET 'table.exec.source.idle-timeout' = '30s';
 
 -- 使用Fluss Catalog
--- 设置执行环境
-SET 'execution.checkpointing.interval' = '60s';
-SET 'table.exec.source.idle-timeout' = '30s';
-
--- 创建Fluss Catalog（每个会话都需要重新创建）
-CREATE CATALOG IF NOT EXISTS fluss_catalog WITH (
-    'type' = 'fluss',
-    'bootstrap.servers' = 'coordinator-server-sgcc:9123'
-);
-
 USE CATALOG fluss_catalog;
 
 -- ========================================

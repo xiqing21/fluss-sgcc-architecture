@@ -153,7 +153,9 @@ CREATE TABLE IF NOT EXISTS fluss_ods_power_equipment (
     last_maintenance_date DATE,
     status STRING,
     created_at TIMESTAMP(3),
-    updated_at TIMESTAMP(3),    PRIMARY KEY (equipment_id) NOT ENFORCED
+    updated_at TIMESTAMP(3),
+    process_time TIMESTAMP(3) METADATA FROM 'timestamp',
+    PRIMARY KEY (equipment_id) NOT ENFORCED
 ) WITH (
     'connector' = 'fluss',
     'bootstrap.servers' = 'coordinator-server-sgcc:9123',
@@ -181,7 +183,9 @@ CREATE TABLE IF NOT EXISTS fluss_ods_power_monitoring (
     temperature DECIMAL(6,2),
     humidity DECIMAL(5,2),
     monitoring_time TIMESTAMP(3),
-    created_at TIMESTAMP(3),    PRIMARY KEY (monitoring_id) NOT ENFORCED
+    created_at TIMESTAMP(3),
+    process_time TIMESTAMP(3) METADATA FROM 'timestamp',
+    PRIMARY KEY (monitoring_id) NOT ENFORCED
 ) WITH (
     'connector' = 'fluss',
     'bootstrap.servers' = 'coordinator-server-sgcc:9123',
@@ -205,7 +209,9 @@ CREATE TABLE IF NOT EXISTS fluss_ods_equipment_alarms (
     occurred_at TIMESTAMP(3),
     resolved_at TIMESTAMP(3),
     created_at TIMESTAMP(3),
-    updated_at TIMESTAMP(3),    PRIMARY KEY (alarm_id) NOT ENFORCED
+    updated_at TIMESTAMP(3),
+    process_time TIMESTAMP(3) METADATA FROM 'timestamp',
+    PRIMARY KEY (alarm_id) NOT ENFORCED
 ) WITH (
     'connector' = 'fluss',
     'bootstrap.servers' = 'coordinator-server-sgcc:9123',
@@ -231,7 +237,9 @@ CREATE TABLE IF NOT EXISTS fluss_ods_customer_usage (
     billing_amount DECIMAL(10,2),
     reading_time TIMESTAMP(3),
     created_at TIMESTAMP(3),
-    updated_at TIMESTAMP(3),    PRIMARY KEY (usage_id) NOT ENFORCED
+    updated_at TIMESTAMP(3),
+    process_time TIMESTAMP(3) METADATA FROM 'timestamp',
+    PRIMARY KEY (usage_id) NOT ENFORCED
 ) WITH (
     'connector' = 'fluss',
     'bootstrap.servers' = 'coordinator-server-sgcc:9123',
