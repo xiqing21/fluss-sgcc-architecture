@@ -1,0 +1,362 @@
+services:
+  # ========================================
+  # PostgreSQL 源数据库（国网电力监控系统）
+  # ========================================
+  postgres-sgcc-source:
+    image: postgres:15
+    hostname: postgres-sgcc-source
+    container_name: postgres-sgcc-source
+    ports:
+      - "5442:5432"  # 使用不同的端口
+    environment:
+      POSTGRES_DB: sgcc_source_db
+      POSTGRES_USER: sgcc_user
+      POSTGRES_PASSWORD: sgcc_pass_2024
+    volumes:
+      - ./postgres_source/init:/docker-entrypoint-initdb.d
+      - postgres_sgcc_source_data:/var/lib/postgresql/data
+    command: |
+      postgres -c wal_level=logical 
+               -c max_replication_slots=20 
+               -c max_wal_senders=20
+               -c shared_preload_libraries='pg_stat_statements'
+               -c track_activities=on
+               -c track_counts=on
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U sgcc_user -d sgcc_source_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks:
+      - fluss-sgcc-network
+
+  # ========================================
+  # PostgreSQL 目标数据库（数仓分层结果存储）
+  # ========================================
+  postgres-sgcc-sink:
+    image: postgres:15
+    hostname: postgres-sgcc-sink
+    container_name: postgres-sgcc-sink
+    ports:
+      - "5443:5432"  # 使用不同的端口
+    environment:
+      POSTGRES_DB: sgcc_dw_db
+      POSTGRES_USER: sgcc_user
+      POSTGRES_PASSWORD: sgcc_pass_2024
+    volumes:
+      - ./postgres_sink/init:/docker-entrypoint-initdb.d
+      - postgres_sgcc_sink_data:/var/lib/postgresql/data
+    command: |
+      postgres -c shared_preload_libraries='pg_stat_statements'
+               -c track_activities=on
+               -c track_counts=on
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U sgcc_user -d sgcc_dw_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks:
+      - fluss-sgcc-network
+
+  # ========================================
+  # MySQL 目标数据库（数仓分层结果存储）
+  # ========================================
+  mysql-sgcc-sink:
+    image: mysql:8.0
+    hostname: mysql-sgcc-sink
+    container_name: mysql-sgcc-sink
+    ports:
+      - "3306:3306"
+    environment:
+      MYSQL_ROOT_PASSWORD: sgcc_root_pass_2024
+      MYSQL_DATABASE: sgcc_dw_db
+      MYSQL_USER: sgcc_user
+      MYSQL_PASSWORD: sgcc_pass_2024
+    volumes:
+      - mysql_sink_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    networks:
+      - fluss-sgcc-network
+
+  # ========================================
+  # ZooKeeper（Fluss依赖）
+  # ========================================
+  zookeeper:
+    image: zookeeper:3.9.2
+    hostname: zookeeper
+    container_name: zookeeper-sgcc
+    ports:
+      - "2181:2181"
+    environment:
+      ZOO_MY_ID: 1
+      ZOO_SERVERS: server.1=0.0.0.0:2888:3888;2181
+    restart: always
+    networks:
+      - fluss-sgcc-network
+    healthcheck:
+      test: ["CMD", "echo", "ruok", "|", "nc", "localhost", "2181"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ========================================
+  # Fluss Coordinator Server（基于官方配置）
+  # ========================================
+  coordinator-server:
+    image: fluss/fluss:0.7.0
+    hostname: coordinator-server
+    container_name: coordinator-server-sgcc
+    ports:
+      - "9123:9123"
+    command: coordinatorServer
+    depends_on:
+      zookeeper:
+        condition: service_healthy
+    environment:
+      - |
+        FLUSS_PROPERTIES=
+        zookeeper.address: zookeeper:2181
+        bind.listeners: FLUSS://coordinator-server:9123
+        remote.data.dir: /tmp/fluss/remote-data
+        datalake.format: paimon
+        datalake.paimon.metastore: filesystem
+        datalake.paimon.warehouse: /tmp/paimon
+    volumes:
+      - shared-tmpfs:/tmp/paimon
+      - fluss_coordinator_data:/tmp/fluss
+    networks:
+      - fluss-sgcc-network
+    restart: unless-stopped
+
+  # ========================================
+  # Fluss Tablet Server（基于官方配置）
+  # ========================================
+  tablet-server:
+    image: fluss/fluss:0.7.0
+    hostname: tablet-server
+    container_name: tablet-server-sgcc
+    ports:
+      - "9124:9123"
+    command: tabletServer
+    depends_on:
+      coordinator-server:
+        condition: service_started
+    environment:
+      - |
+        FLUSS_PROPERTIES=
+        zookeeper.address: zookeeper:2181
+        bind.listeners: FLUSS://tablet-server:9123
+        data.dir: /tmp/fluss/data
+        remote.data.dir: /tmp/fluss/remote-data
+        kv.snapshot.interval: 0s
+        datalake.format: paimon
+        datalake.paimon.metastore: filesystem
+        datalake.paimon.warehouse: /tmp/paimon
+    volumes:
+      - shared-tmpfs:/tmp/paimon
+      - fluss_tablet_data:/tmp/fluss
+    networks:
+      - fluss-sgcc-network
+    restart: unless-stopped
+
+  # ========================================
+  # Flink JobManager（基于官方配置）
+  # ========================================
+  jobmanager:
+    image: fluss/quickstart-flink:1.20-0.7.0
+    hostname: jobmanager
+    container_name: jobmanager-sgcc
+    ports:
+      - "8091:8081"  # 修改端口避免冲突
+    command: jobmanager
+    depends_on:
+      coordinator-server:
+        condition: service_started
+      postgres-sgcc-source:
+        condition: service_healthy
+      postgres-sgcc-sink:
+        condition: service_healthy
+      mysql-sgcc-sink:
+        condition: service_healthy
+    environment:
+      - |
+        FLINK_PROPERTIES=
+        jobmanager.rpc.address: jobmanager
+        execution.checkpointing.interval: 60s
+        execution.checkpointing.externalized-checkpoint-retention: RETAIN_ON_CANCELLATION
+        state.backend: hashmap
+        state.checkpoints.dir: file:///tmp/flink-checkpoints
+        state.savepoints.dir: file:///tmp/flink-savepoints
+        parallelism.default: 2
+    volumes:
+      - shared-tmpfs:/tmp/paimon
+      - flink_checkpoints:/tmp/flink-checkpoints
+      - flink_savepoints:/tmp/flink-savepoints
+      - ./fluss/jars/postgresql-42.7.7.jar:/opt/flink/lib/postgresql-42.7.7.jar
+      - ./fluss/jars/flink-sql-connector-postgres-cdc-3.1.1.jar:/opt/flink/lib/flink-sql-connector-postgres-cdc-3.1.1.jar
+      - ./fluss/jars/flink-connector-jdbc-core-3.3.0-1.20.jar:/opt/flink/lib/flink-connector-jdbc-core-3.3.0-1.20.jar
+      - ./fluss/jars/flink-connector-jdbc-3.3.0-1.20.jar:/opt/flink/lib/flink-connector-jdbc-3.3.0-1.20.jar
+    networks:
+      - fluss-sgcc-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8081/overview"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+  # ========================================
+  # Flink TaskManager（基于官方配置）
+  # ========================================
+  taskmanager-1:
+    image: fluss/quickstart-flink:1.20-0.7.0
+    hostname: taskmanager-1
+    container_name: taskmanager-sgcc-1
+    depends_on:
+      jobmanager:
+        condition: service_healthy
+    command: taskmanager
+    environment:
+      - |
+        FLINK_PROPERTIES=
+        jobmanager.rpc.address: jobmanager
+        taskmanager.numberOfTaskSlots: 10
+        taskmanager.memory.process.size: 2048m
+        taskmanager.memory.framework.off-heap.size: 256m
+        parallelism.default: 2
+    volumes:
+      - shared-tmpfs:/tmp/paimon
+      - flink_checkpoints:/tmp/flink-checkpoints
+      - flink_savepoints:/tmp/flink-savepoints
+      - ./fluss/jars/postgresql-42.7.7.jar:/opt/flink/lib/postgresql-42.7.7.jar
+      - ./fluss/jars/flink-sql-connector-postgres-cdc-3.1.1.jar:/opt/flink/lib/flink-sql-connector-postgres-cdc-3.1.1.jar
+      - ./fluss/jars/flink-connector-jdbc-core-3.3.0-1.20.jar:/opt/flink/lib/flink-connector-jdbc-core-3.3.0-1.20.jar
+      - ./fluss/jars/flink-connector-jdbc-3.3.0-1.20.jar:/opt/flink/lib/flink-connector-jdbc-3.3.0-1.20.jar
+    networks:
+      - fluss-sgcc-network
+
+  taskmanager-2:
+    image: fluss/quickstart-flink:1.20-0.7.0
+    hostname: taskmanager-2
+    container_name: taskmanager-sgcc-2
+    depends_on:
+      jobmanager:
+        condition: service_healthy
+    command: taskmanager
+    environment:
+      - |
+        FLINK_PROPERTIES=
+        jobmanager.rpc.address: jobmanager
+        taskmanager.numberOfTaskSlots: 10
+        taskmanager.memory.process.size: 2048m
+        taskmanager.memory.framework.off-heap.size: 256m
+        parallelism.default: 2
+    volumes:
+      - shared-tmpfs:/tmp/paimon
+      - flink_checkpoints:/tmp/flink-checkpoints
+      - flink_savepoints:/tmp/flink-savepoints
+      - ./fluss/jars/postgresql-42.7.7.jar:/opt/flink/lib/postgresql-42.7.7.jar
+      - ./fluss/jars/flink-sql-connector-postgres-cdc-3.1.1.jar:/opt/flink/lib/flink-sql-connector-postgres-cdc-3.1.1.jar
+      - ./fluss/jars/flink-connector-jdbc-core-3.3.0-1.20.jar:/opt/flink/lib/flink-connector-jdbc-core-3.3.0-1.20.jar
+      - ./fluss/jars/flink-connector-jdbc-3.3.0-1.20.jar:/opt/flink/lib/flink-connector-jdbc-3.3.0-1.20.jar
+    networks:
+      - fluss-sgcc-network
+
+  # ========================================
+  # Flink SQL Client（用于执行SQL脚本）
+  # ========================================
+  sql-client:
+    image: fluss/quickstart-flink:1.20-0.7.0
+    hostname: sql-client
+    container_name: sql-client-sgcc
+    depends_on:
+      jobmanager:
+        condition: service_healthy
+      tablet-server:
+        condition: service_started
+    command: 
+      - bash
+      - -c
+      - |
+        echo 'Waiting for all services to be ready...'
+        sleep 45
+        
+        echo '========================================='
+        echo '🚀 国网电力监控系统 - Fluss架构 Ready!'
+        echo '========================================='
+        echo 'SQL Client is ready. You can now connect and execute SQL files.'
+        echo 'Available SQL files:'
+        echo '  1. /opt/sql/1_cdc_source_to_fluss.sql'
+        echo '  2. /opt/sql/2_fluss_dwd_layer.sql'  
+        echo '  3. /opt/sql/3_fluss_dws_layer.sql'
+        echo '  4. /opt/sql/4_fluss_ads_layer.sql'
+        echo '  5. /opt/sql/5_sink_to_postgres.sql'
+        echo ''
+        echo 'To connect: docker exec -it sql-client-sgcc ./sql-client'
+        echo 'To run validation: ./scripts/sgcc_validation_test.sh'
+        echo '========================================='
+        echo 'Services Status:'
+        echo '  - PostgreSQL Source: postgres-sgcc-source:5442'
+        echo '  - PostgreSQL Sink: postgres-sgcc-sink:5443'
+        echo '  - Fluss Coordinator: coordinator-server:9123'
+        echo '  - Flink JobManager: jobmanager:8091'
+        echo '  - ZooKeeper: zookeeper:2181'
+        echo '========================================='
+        echo 'Fluss with Paimon Datalake is ready!'
+        echo 'Paimon warehouse: /tmp/paimon'
+        echo '========================================='
+        
+        tail -f /dev/null
+    environment:
+      - |
+        FLINK_PROPERTIES=
+        jobmanager.rpc.address: jobmanager
+        rest.address: jobmanager
+        rest.port: 8081
+    volumes:
+      - shared-tmpfs:/tmp/paimon
+      - ./fluss/sql:/opt/sql
+      - ./fluss/jars/postgresql-42.7.7.jar:/opt/flink/lib/postgresql-42.7.7.jar
+      - ./fluss/jars/flink-sql-connector-postgres-cdc-3.1.1.jar:/opt/flink/lib/flink-sql-connector-postgres-cdc-3.1.1.jar
+      - ./fluss/jars/flink-connector-jdbc-core-3.3.0-1.20.jar:/opt/flink/lib/flink-connector-jdbc-core-3.3.0-1.20.jar
+      - ./fluss/jars/flink-connector-jdbc-3.3.0-1.20.jar:/opt/flink/lib/flink-connector-jdbc-3.3.0-1.20.jar
+    networks:
+      - fluss-sgcc-network
+
+networks:
+  fluss-sgcc-network:
+    driver: bridge
+    name: fluss-sgcc-network
+
+volumes:
+  # PostgreSQL数据卷
+  postgres_sgcc_source_data:
+    name: postgres_sgcc_source_data
+  postgres_sgcc_sink_data:
+    name: postgres_sgcc_sink_data
+  
+  # MySQL数据卷
+  mysql_sink_data:
+    name: mysql_sink_data
+  
+  # Fluss数据卷
+  fluss_coordinator_data:
+    name: fluss_coordinator_data
+  fluss_tablet_data:
+    name: fluss_tablet_data
+  
+  # Flink数据卷
+  flink_checkpoints:
+    name: flink_checkpoints
+  flink_savepoints:
+    name: flink_savepoints
+  
+  # 共享tmpfs卷（用于Paimon数据湖）
+  shared-tmpfs:
+    driver: local
+    driver_opts:
+      type: "tmpfs"
+      device: "tmpfs" 

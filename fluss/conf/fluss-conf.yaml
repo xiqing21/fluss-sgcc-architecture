@@ -1,0 +1,57 @@
+# ========================================
+# Fluss 配置文件 - 国网电力监控系统
+# ========================================
+
+# 集群配置
+cluster-id: sgcc-fluss-cluster
+node-id: ${FLUSS_NODE_ID}
+role: ${FLUSS_ROLE}
+
+# 网络配置
+rpc:
+  address: 0.0.0.0
+  port: 9123
+
+# 存储配置
+storage:
+  data-dir: /opt/fluss/data
+  log-dir: /opt/fluss/logs
+  segment-size: 256MB
+  log-retention-hours: 168  # 7天
+  log-retention-bytes: 10GB
+
+# 副本配置
+replication:
+  factor: 2
+  min-insync-replicas: 1
+
+# 压缩配置
+compression:
+  type: lz4
+  level: 1
+
+# 内存配置
+memory:
+  heap-size: 1G
+  off-heap-size: 512MB
+
+# 日志配置
+logging:
+  level: INFO
+  file: /opt/fluss/logs/fluss.log
+  max-file-size: 100MB
+  max-files: 10
+
+# 监控配置
+metrics:
+  enabled: true
+  port: 9090
+  interval: 30s
+
+# 安全配置
+security:
+  enabled: false
+
+# 高可用配置
+ha:
+  enabled: false 

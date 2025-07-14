@@ -1,0 +1,265 @@
+<mxfile host="draw.io" modified="2024-01-15T10:00:00.000Z" agent="draw.io" version="22.1.16" etag="drawio">
+  <diagram id="sgcc-fluss-architecture" name="国网电力监控系统-Fluss架构">
+    <mxGraphModel dx="1422" dy="794" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1654" pageHeight="1169" math="0" shadow="0">
+      <root>
+        <mxCell id="0"/>
+        <mxCell id="1" parent="0"/>
+        
+        <!-- 标题 -->
+        <mxCell id="title" value="国网电力监控系统 - Fluss统一流存储架构" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=24;fontStyle=1;fontColor=#2E7D32;" vertex="1" parent="1">
+          <mxGeometry x="527" y="30" width="600" height="40" as="geometry"/>
+        </mxCell>
+        
+        <!-- 数据源层 -->
+        <mxCell id="source-title" value="数据源层" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E8F5E8;strokeColor=#4CAF50;fontSize=16;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="50" y="100" width="120" height="40" as="geometry"/>
+        </mxCell>
+        
+        <mxCell id="postgres-source" value="PostgreSQL 源数据库&lt;br&gt;(sgcc_source_db)&lt;br&gt;端口: 5442&lt;br&gt;&lt;br&gt;📊 电力设备主数据&lt;br&gt;📈 实时监控数据&lt;br&gt;⚠️ 设备告警事件&lt;br&gt;💡 客户用电信息" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E3F2FD;strokeColor=#2196F3;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="50" y="160" width="200" height="120" as="geometry"/>
+        </mxCell>
+        
+        <!-- CDC层 -->
+        <mxCell id="cdc-title" value="CDC数据采集" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFF3E0;strokeColor=#FF9800;fontSize=16;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="320" y="100" width="120" height="40" as="geometry"/>
+        </mxCell>
+        
+        <mxCell id="postgres-cdc" value="PostgreSQL CDC&lt;br&gt;&lt;br&gt;🔄 实时数据变更捕获&lt;br&gt;📤 逻辑复制&lt;br&gt;⚡ 低延迟同步" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFF8E1;strokeColor=#FFC107;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="320" y="160" width="180" height="120" as="geometry"/>
+        </mxCell>
+        
+        <!-- Fluss核心层 -->
+        <mxCell id="fluss-title" value="Fluss统一流存储" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F3E5F5;strokeColor=#9C27B0;fontSize=16;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="560" y="100" width="200" height="40" as="geometry"/>
+        </mxCell>
+        
+        <!-- ZooKeeper -->
+        <mxCell id="zookeeper" value="ZooKeeper&lt;br&gt;协调服务&lt;br&gt;端口: 2181" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFEBEE;strokeColor=#F44336;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="560" y="160" width="80" height="60" as="geometry"/>
+        </mxCell>
+        
+        <!-- Fluss Coordinator -->
+        <mxCell id="fluss-coordinator" value="Fluss Coordinator&lt;br&gt;协调服务器&lt;br&gt;端口: 9123&lt;br&gt;&lt;br&gt;🏗️ 集群管理&lt;br&gt;📋 元数据管理&lt;br&gt;🗃️ Paimon数据湖" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F3E5F5;strokeColor=#9C27B0;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="660" y="160" width="120" height="100" as="geometry"/>
+        </mxCell>
+        
+        <!-- Fluss Tablet Servers -->
+        <mxCell id="fluss-tablet1" value="Fluss Tablet Server 1&lt;br&gt;端口: 9124&lt;br&gt;&lt;br&gt;💾 数据存储&lt;br&gt;⚡ 流处理&lt;br&gt;🔄 数据副本" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F3E5F5;strokeColor=#9C27B0;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="560" y="280" width="100" height="80" as="geometry"/>
+        </mxCell>
+        
+        <mxCell id="fluss-tablet2" value="Fluss Tablet Server 2&lt;br&gt;端口: 9125&lt;br&gt;&lt;br&gt;💾 数据存储&lt;br&gt;⚡ 流处理&lt;br&gt;🔄 数据副本" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F3E5F5;strokeColor=#9C27B0;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="680" y="280" width="100" height="80" as="geometry"/>
+        </mxCell>
+        
+        <!-- 数据分层处理 -->
+        <mxCell id="layer-title" value="数据仓库分层处理" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E8F5E8;strokeColor=#4CAF50;fontSize=16;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="560" y="390" width="200" height="40" as="geometry"/>
+        </mxCell>
+        
+        <!-- ODS层 -->
+        <mxCell id="ods-layer" value="ODS层 (操作数据存储)&lt;br&gt;&lt;br&gt;📥 原始数据接入&lt;br&gt;🔄 实时数据流&lt;br&gt;💾 历史数据存储" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E8F5E8;strokeColor=#4CAF50;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="460" y="450" width="120" height="80" as="geometry"/>
+        </mxCell>
+        
+        <!-- DWD层 -->
+        <mxCell id="dwd-layer" value="DWD层 (数据明细层)&lt;br&gt;&lt;br&gt;🧹 数据清洗&lt;br&gt;🔧 数据增强&lt;br&gt;📊 业务规则应用" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E3F2FD;strokeColor=#2196F3;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="600" y="450" width="120" height="80" as="geometry"/>
+        </mxCell>
+        
+        <!-- DWS层 -->
+        <mxCell id="dws-layer" value="DWS层 (数据汇总层)&lt;br&gt;&lt;br&gt;📈 数据聚合&lt;br&gt;🕐 时间窗口处理&lt;br&gt;📊 指标计算" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFF3E0;strokeColor=#FF9800;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="740" y="450" width="120" height="80" as="geometry"/>
+        </mxCell>
+        
+        <!-- ADS层 -->
+        <mxCell id="ads-layer" value="ADS层 (应用数据服务)&lt;br&gt;&lt;br&gt;🎯 应用主题&lt;br&gt;📋 实时大屏&lt;br&gt;🏥 设备健康评估" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFEBEE;strokeColor=#F44336;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="880" y="450" width="120" height="80" as="geometry"/>
+        </mxCell>
+        
+        <!-- Flink计算引擎 -->
+        <mxCell id="flink-title" value="Flink计算引擎" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E1F5FE;strokeColor=#0277BD;fontSize=16;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="820" y="100" width="180" height="40" as="geometry"/>
+        </mxCell>
+        
+        <mxCell id="flink-jobmanager" value="Flink JobManager&lt;br&gt;端口: 8091&lt;br&gt;&lt;br&gt;🎯 作业调度&lt;br&gt;📊 资源管理&lt;br&gt;📈 监控检查点" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E1F5FE;strokeColor=#0277BD;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="820" y="160" width="100" height="80" as="geometry"/>
+        </mxCell>
+        
+        <mxCell id="flink-taskmanager" value="Flink TaskManager&lt;br&gt;(集群模式)&lt;br&gt;&lt;br&gt;⚡ 任务执行&lt;br&gt;💾 状态管理&lt;br&gt;🔄 数据处理" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E1F5FE;strokeColor=#0277BD;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="940" y="160" width="100" height="80" as="geometry"/>
+        </mxCell>
+        
+        <mxCell id="sql-client" value="SQL Client&lt;br&gt;&lt;br&gt;📝 SQL脚本执行&lt;br&gt;🔧 作业提交&lt;br&gt;📊 交互式查询" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E1F5FE;strokeColor=#0277BD;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="880" y="260" width="120" height="80" as="geometry"/>
+        </mxCell>
+        
+        <!-- 数据湖存储 -->
+        <mxCell id="datalake-title" value="Paimon数据湖" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F1F8E9;strokeColor=#689F38;fontSize=16;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="1080" y="100" width="150" height="40" as="geometry"/>
+        </mxCell>
+        
+        <mxCell id="paimon-lake" value="Apache Paimon&lt;br&gt;数据湖存储&lt;br&gt;&lt;br&gt;🗄️ 列式存储&lt;br&gt;📊 ACID事务&lt;br&gt;🕐 时间旅行&lt;br&gt;🔄 增量更新&lt;br&gt;💡 Schema演进" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F1F8E9;strokeColor=#689F38;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="1080" y="160" width="150" height="120" as="geometry"/>
+        </mxCell>
+        
+        <!-- 目标数据库 -->
+        <mxCell id="sink-title" value="数据应用层" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FCE4EC;strokeColor=#E91E63;fontSize=16;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="1300" y="100" width="120" height="40" as="geometry"/>
+        </mxCell>
+        
+        <mxCell id="postgres-sink" value="PostgreSQL 目标数据库&lt;br&gt;(sgcc_dw_db)&lt;br&gt;端口: 5443&lt;br&gt;&lt;br&gt;📊 DWD明细数据&lt;br&gt;📈 DWS汇总数据&lt;br&gt;🎯 ADS应用数据&lt;br&gt;📋 实时大屏服务" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FCE4EC;strokeColor=#E91E63;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="1300" y="160" width="200" height="120" as="geometry"/>
+        </mxCell>
+        
+        <!-- 监控与管理 -->
+        <mxCell id="monitor-title" value="监控与管理" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFF9C4;strokeColor=#F57F17;fontSize=16;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="50" y="380" width="120" height="40" as="geometry"/>
+        </mxCell>
+        
+        <mxCell id="validation-script" value="验证测试脚本&lt;br&gt;&lt;br&gt;✅ 服务健康检查&lt;br&gt;📊 数据一致性验证&lt;br&gt;⚡ 性能测试&lt;br&gt;📋 自动化报告" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFF9C4;strokeColor=#F57F17;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="50" y="440" width="140" height="80" as="geometry"/>
+        </mxCell>
+        
+        <mxCell id="docker-compose" value="Docker Compose&lt;br&gt;容器编排&lt;br&gt;&lt;br&gt;🐳 一键部署&lt;br&gt;🔧 服务管理&lt;br&gt;📊 健康检查" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFF9C4;strokeColor=#F57F17;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="210" y="440" width="120" height="80" as="geometry"/>
+        </mxCell>
+        
+        <!-- 连接线 -->
+        <!-- 源数据库到CDC -->
+        <mxCell id="arrow1" value="" style="endArrow=classic;html=1;strokeWidth=2;strokeColor=#FF9800;" edge="1" parent="1" source="postgres-source" target="postgres-cdc">
+          <mxGeometry width="50" height="50" relative="1" as="geometry">
+            <mxPoint x="270" y="220" as="sourcePoint"/>
+            <mxPoint x="300" y="220" as="targetPoint"/>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="arrow1-label" value="CDC同步" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="270" y="200" width="60" height="20" as="geometry"/>
+        </mxCell>
+        
+        <!-- CDC到Fluss -->
+        <mxCell id="arrow2" value="" style="endArrow=classic;html=1;strokeWidth=2;strokeColor=#9C27B0;" edge="1" parent="1" source="postgres-cdc" target="fluss-coordinator">
+          <mxGeometry width="50" height="50" relative="1" as="geometry">
+            <mxPoint x="520" y="220" as="sourcePoint"/>
+            <mxPoint x="640" y="220" as="targetPoint"/>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="arrow2-label" value="流数据写入" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="520" y="200" width="80" height="20" as="geometry"/>
+        </mxCell>
+        
+        <!-- Fluss内部连接 -->
+        <mxCell id="arrow3" value="" style="endArrow=classic;html=1;strokeWidth=1;strokeColor=#9C27B0;startArrow=classic;startFill=1;" edge="1" parent="1" source="fluss-coordinator" target="fluss-tablet1">
+          <mxGeometry width="50" height="50" relative="1" as="geometry">
+            <mxPoint x="680" y="270" as="sourcePoint"/>
+            <mxPoint x="630" y="280" as="targetPoint"/>
+          </mxGeometry>
+        </mxCell>
+        
+        <mxCell id="arrow4" value="" style="endArrow=classic;html=1;strokeWidth=1;strokeColor=#9C27B0;startArrow=classic;startFill=1;" edge="1" parent="1" source="fluss-coordinator" target="fluss-tablet2">
+          <mxGeometry width="50" height="50" relative="1" as="geometry">
+            <mxPoint x="720" y="270" as="sourcePoint"/>
+            <mxPoint x="730" y="280" as="targetPoint"/>
+          </mxGeometry>
+        </mxCell>
+        
+        <!-- Flink处理 -->
+        <mxCell id="arrow5" value="" style="endArrow=classic;html=1;strokeWidth=2;strokeColor=#0277BD;" edge="1" parent="1" source="fluss-coordinator" target="flink-jobmanager">
+          <mxGeometry width="50" height="50" relative="1" as="geometry">
+            <mxPoint x="780" y="200" as="sourcePoint"/>
+            <mxPoint x="820" y="200" as="targetPoint"/>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="arrow5-label" value="流处理" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="790" y="180" width="50" height="20" as="geometry"/>
+        </mxCell>
+        
+        <!-- 数据分层处理 -->
+        <mxCell id="arrow6" value="" style="endArrow=classic;html=1;strokeWidth=2;strokeColor=#4CAF50;" edge="1" parent="1" source="fluss-tablet1" target="ods-layer">
+          <mxGeometry width="50" height="50" relative="1" as="geometry">
+            <mxPoint x="580" y="370" as="sourcePoint"/>
+            <mxPoint x="520" y="450" as="targetPoint"/>
+          </mxGeometry>
+        </mxCell>
+        
+        <mxCell id="arrow7" value="" style="endArrow=classic;html=1;strokeWidth=2;strokeColor=#2196F3;" edge="1" parent="1" source="ods-layer" target="dwd-layer">
+          <mxGeometry width="50" height="50" relative="1" as="geometry">
+            <mxPoint x="580" y="490" as="sourcePoint"/>
+            <mxPoint x="600" y="490" as="targetPoint"/>
+          </mxGeometry>
+        </mxCell>
+        
+        <mxCell id="arrow8" value="" style="endArrow=classic;html=1;strokeWidth=2;strokeColor=#FF9800;" edge="1" parent="1" source="dwd-layer" target="dws-layer">
+          <mxGeometry width="50" height="50" relative="1" as="geometry">
+            <mxPoint x="720" y="490" as="sourcePoint"/>
+            <mxPoint x="740" y="490" as="targetPoint"/>
+          </mxGeometry>
+        </mxCell>
+        
+        <mxCell id="arrow9" value="" style="endArrow=classic;html=1;strokeWidth=2;strokeColor=#F44336;" edge="1" parent="1" source="dws-layer" target="ads-layer">
+          <mxGeometry width="50" height="50" relative="1" as="geometry">
+            <mxPoint x="860" y="490" as="sourcePoint"/>
+            <mxPoint x="880" y="490" as="targetPoint"/>
+          </mxGeometry>
+        </mxCell>
+        
+        <!-- 数据湖存储 -->
+        <mxCell id="arrow10" value="" style="endArrow=classic;html=1;strokeWidth=2;strokeColor=#689F38;" edge="1" parent="1" source="fluss-coordinator" target="paimon-lake">
+          <mxGeometry width="50" height="50" relative="1" as="geometry">
+            <mxPoint x="780" y="220" as="sourcePoint"/>
+            <mxPoint x="1080" y="220" as="targetPoint"/>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="arrow10-label" value="数据湖集成" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="920" y="200" width="80" height="20" as="geometry"/>
+        </mxCell>
+        
+        <!-- 输出到目标数据库 -->
+        <mxCell id="arrow11" value="" style="endArrow=classic;html=1;strokeWidth=2;strokeColor=#E91E63;" edge="1" parent="1" source="ads-layer" target="postgres-sink">
+          <mxGeometry width="50" height="50" relative="1" as="geometry">
+            <mxPoint x="1000" y="490" as="sourcePoint"/>
+            <mxPoint x="1300" y="220" as="targetPoint"/>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="arrow11-label" value="结果输出" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="1150" y="350" width="70" height="20" as="geometry"/>
+        </mxCell>
+        
+        <!-- 架构特性说明 -->
+        <mxCell id="features-title" value="架构特性" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E8EAF6;strokeColor=#3F51B5;fontSize=16;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="50" y="570" width="100" height="40" as="geometry"/>
+        </mxCell>
+        
+        <mxCell id="feature1" value="🚀 高性能&lt;br&gt;Fluss提供低延迟流处理" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E8EAF6;strokeColor=#3F51B5;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="50" y="630" width="120" height="50" as="geometry"/>
+        </mxCell>
+        
+        <mxCell id="feature2" value="🔄 实时性&lt;br&gt;毫秒级数据同步处理" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E8EAF6;strokeColor=#3F51B5;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="190" y="630" width="120" height="50" as="geometry"/>
+        </mxCell>
+        
+        <mxCell id="feature3" value="🏗️ 数仓分层&lt;br&gt;完整ODS-DWD-DWS-ADS架构" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E8EAF6;strokeColor=#3F51B5;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="330" y="630" width="140" height="50" as="geometry"/>
+        </mxCell>
+        
+        <mxCell id="feature4" value="📊 数据湖&lt;br&gt;集成Paimon提供ACID事务" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E8EAF6;strokeColor=#3F51B5;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="490" y="630" width="140" height="50" as="geometry"/>
+        </mxCell>
+        
+        <mxCell id="feature5" value="🔧 易维护&lt;br&gt;统一存储替代Kafka队列" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E8EAF6;strokeColor=#3F51B5;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="650" y="630" width="140" height="50" as="geometry"/>
+        </mxCell>
+        
+        <mxCell id="feature6" value="📈 可扩展&lt;br&gt;支持水平扩展和高可用" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E8EAF6;strokeColor=#3F51B5;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="810" y="630" width="140" height="50" as="geometry"/>
+        </mxCell>
+        
+        <!-- 版本信息 -->
+        <mxCell id="version-info" value="版本信息：Fluss 0.7.0 | Flink 1.20 | Paimon 数据湖 | PostgreSQL 15" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=10;fontColor=#666666;" vertex="1" parent="1">
+          <mxGeometry x="527" y="720" width="600" height="20" as="geometry"/>
+        </mxCell>
+        
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile> 
