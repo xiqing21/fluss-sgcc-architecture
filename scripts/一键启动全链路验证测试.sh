@@ -66,17 +66,58 @@ init_test_report() {
 EOF
 }
 
-# 环境启动函数
+# 环境启动函数（增强清理版）
 start_environment() {
-    log_info "🌟 步骤1: 启动测试环境"
+    log_info "🌟 步骤1: 启动测试环境（含彻底清理）"
+    
+    # 优雅停止所有Flink任务
+    log_info "优雅停止所有Flink任务..."
+    local running_jobs=$(docker exec jobmanager-sgcc /opt/flink/bin/flink list -r 2>/dev/null)
+    
+    if [[ "$running_jobs" != *"No running jobs"* ]] && [[ -n "$running_jobs" ]]; then
+        local job_ids=$(echo "$running_jobs" | grep -oE '[a-f0-9]{32}')
+        local job_count=0
+        
+        for job_id in $job_ids; do
+            log_info "停止任务: $job_id"
+            docker exec jobmanager-sgcc /opt/flink/bin/flink cancel "$job_id" >/dev/null 2>&1
+            sleep 2
+            job_count=$((job_count + 1))
+        done
+        
+        if [[ $job_count -gt 0 ]]; then
+            log_success "✅ 已停止 $job_count 个Flink任务"
+        fi
+    fi
     
     # 停止现有环境
     log_info "停止现有环境..."
     docker-compose down > /dev/null 2>&1
+    sleep 10
     
-    # 清理Docker卷
-    log_info "清理Docker卷..."
+    # 彻底清理Fluss相关数据卷（解决metadata问题）
+    log_info "彻底清理Fluss metadata和数据卷..."
+    local volumes_to_remove=(
+        "fluss_coordinator_data"
+        "fluss_tablet_data"
+        "flink_checkpoints"
+        "flink_savepoints"
+    )
+    
+    for volume in "${volumes_to_remove[@]}"; do
+        if docker volume ls -q | grep -q "^${volume}$"; then
+            log_info "删除卷: $volume"
+            docker volume rm "$volume" > /dev/null 2>&1
+        fi
+    done
+    
+    # 清理未使用的卷
+    log_info "清理未使用的Docker卷..."
     docker volume prune -f > /dev/null 2>&1
+    
+    # 清理系统缓存
+    log_info "清理Docker系统缓存..."
+    docker system prune -f > /dev/null 2>&1
     
     # 启动环境
     log_info "启动Docker Compose环境..."
@@ -130,7 +171,7 @@ validate_data() {
     
     # 验证PostgreSQL源数据
     log_info "验证PostgreSQL源数据..."
-    local source_count=$(docker exec postgres-sgcc-source psql -U sgcc_user -d sgcc_source -t -c "SELECT COUNT(*) FROM electrical_data;" 2>/dev/null | tr -d ' ')
+    local source_count=$(docker exec postgres-sgcc-source psql -U sgcc_user -d sgcc_source_db -t -c "SELECT COUNT(*) FROM sgcc_power.power_monitoring;" 2>/dev/null | tr -d ' ')
     if [[ "$source_count" -gt 0 ]]; then
         log_success "✅ 源数据表记录数: $source_count"
         metrics[total_records_processed]=$((metrics[total_records_processed] + source_count))
@@ -151,21 +192,21 @@ CREATE CATALOG fluss_catalog WITH (
 USE CATALOG fluss_catalog;
 
 -- 验证ODS层
-SELECT 'ODS层记录数' as layer, COUNT(*) as count FROM sgcc_ods.electrical_data_ods;
+SELECT 'ODS power_monitoring' as layer, COUNT(*) as count FROM sgcc_ods.power_monitoring_ods;
 
 -- 验证DWD层
-SELECT 'DWD层记录数' as layer, COUNT(*) as count FROM sgcc_dwd.electrical_data_dwd;
+SELECT 'DWD power_monitoring' as layer, COUNT(*) as count FROM sgcc_dwd.power_monitoring_dwd;
 
 -- 验证DWS层
-SELECT 'DWS层记录数' as layer, COUNT(*) as count FROM sgcc_dws.electrical_data_dws;
+SELECT 'DWS power_summary' as layer, COUNT(*) as count FROM sgcc_dws.power_summary_dws;
 
 -- 验证ADS层
-SELECT 'ADS层记录数' as layer, COUNT(*) as count FROM sgcc_ads.alarm_intelligence_report;
+SELECT 'ADS智能报告' as layer, COUNT(*) as count FROM sgcc_ads.power_intelligence_report;
 
 -- 验证最新数据
-SELECT 'DWS最新数据' as info, device_id, avg_current, max_power, record_time 
-FROM sgcc_dws.electrical_data_dws 
-ORDER BY record_time DESC LIMIT 5;
+SELECT 'DWD最新数据' as info, equipment_id, voltage_a, current_a, monitoring_time 
+FROM sgcc_dwd.power_monitoring_dwd 
+ORDER BY monitoring_time DESC LIMIT 5;
 EOF
     
     # 执行验证
@@ -177,7 +218,7 @@ EOF
     
     # 验证PostgreSQL目标数据
     log_info "验证PostgreSQL目标数据..."
-    local target_count=$(docker exec postgres-sgcc-sink psql -U sgcc_user -d sgcc_target -t -c "SELECT COUNT(*) FROM alarm_intelligence_report;" 2>/dev/null | tr -d ' ')
+    local target_count=$(docker exec postgres-sgcc-sink psql -U sgcc_user -d sgcc_dw_db -t -c "SELECT COUNT(*) FROM power_summary_report;" 2>/dev/null | tr -d ' ')
     if [[ "$target_count" -gt 0 ]]; then
         log_success "✅ 目标数据表记录数: $target_count"
         metrics[total_records_processed]=$((metrics[total_records_processed] + target_count))
@@ -186,9 +227,40 @@ EOF
     fi
 }
 
-# 业务场景测试函数
+# 停止所有Flink任务
+stop_all_flink_jobs() {
+    log_info "🛑 停止所有Flink任务..."
+    
+    # 获取所有运行中的任务
+    local running_jobs=$(docker exec jobmanager-sgcc /opt/flink/bin/flink list -r 2>/dev/null)
+    
+    if [[ "$running_jobs" == *"No running jobs"* ]] || [[ -z "$running_jobs" ]]; then
+        log_info "没有运行中的任务需要停止"
+        return 0
+    fi
+    
+    # 提取任务ID并停止
+    local job_ids=$(echo "$running_jobs" | grep -oE '[a-f0-9]{32}')
+    local job_count=0
+    
+    for job_id in $job_ids; do
+        log_info "停止任务: $job_id"
+        docker exec jobmanager-sgcc /opt/flink/bin/flink cancel "$job_id" >/dev/null 2>&1
+        sleep 2
+        job_count=$((job_count + 1))
+    done
+    
+    if [[ $job_count -gt 0 ]]; then
+        log_success "✅ 已停止 $job_count 个任务"
+    fi
+    
+    # 等待任务完全停止
+    sleep 10
+}
+
+# 业务场景测试函数（增强版）
 run_business_scenarios() {
-    log_info "🎯 步骤3: 业务场景测试"
+    log_info "🎯 步骤3: 业务场景测试（含任务管理）"
     
     local scenarios=(
         "business-scenarios/场景1_高频维度表服务.sql:场景1_高频维度表服务"
@@ -203,14 +275,28 @@ run_business_scenarios() {
         
         metrics[total_test_scenarios]=$((metrics[total_test_scenarios] + 1))
         
+        log_info "🎯 开始执行: $description"
+        
         if execute_sql_script "$script_file" "$description"; then
             metrics[successful_scenarios]=$((metrics[successful_scenarios] + 1))
+            
+            # 场景执行成功后等待一段时间让任务稳定运行
+            log_info "等待场景任务稳定运行 (20秒)..."
+            sleep 20
+            
+            # 停止当前场景的所有任务
+            log_info "🛑 清理场景任务，准备下一个场景..."
+            stop_all_flink_jobs
+            
         else
             metrics[failed_scenarios]=$((metrics[failed_scenarios] + 1))
+            log_error "❌ 场景执行失败，停止所有任务后继续下一个场景"
+            stop_all_flink_jobs
         fi
         
         # 场景间暂停
-        sleep 10
+        log_info "场景间等待 (15秒)..."
+        sleep 15
     done
 }
 
@@ -219,24 +305,28 @@ run_crud_operations() {
     log_info "🔄 步骤4: 增删改操作测试"
     
     # 创建增删改测试脚本
-    cat > /tmp/crud_operations.sql << 'EOF'
--- 插入测试数据
-INSERT INTO electrical_data (device_id, voltage, current, power, temperature, humidity, location, status, record_time) 
-VALUES 
-  ('TEST_DEVICE_001', 220.5, 15.2, 3350.0, 25.0, 60.0, 'TEST_LOCATION', 'NORMAL', NOW()),
-  ('TEST_DEVICE_002', 218.3, 14.8, 3230.0, 26.5, 58.0, 'TEST_LOCATION', 'NORMAL', NOW()),
-  ('TEST_DEVICE_003', 225.1, 16.1, 3625.0, 24.0, 62.0, 'TEST_LOCATION', 'NORMAL', NOW());
+    local test_equipment_id=$((RANDOM % 1000 + 9000))
+    cat > /tmp/crud_operations.sql << EOF
+-- 插入测试数据到sgcc_power.power_monitoring表
+INSERT INTO sgcc_power.power_monitoring (
+    monitoring_id, equipment_id, voltage_a, voltage_b, voltage_c, 
+    current_a, current_b, current_c, power_active, power_reactive, 
+    frequency, temperature, humidity, monitoring_time
+) VALUES 
+  ($test_equipment_id, $test_equipment_id, 220.5, 219.8, 221.2, 15.2, 15.1, 15.3, 3350.0, 450.0, 50.01, 25.5, 60.2, NOW()),
+  ($((test_equipment_id+1)), $((test_equipment_id+1)), 218.3, 218.1, 218.9, 14.8, 14.7, 14.9, 3230.0, 420.0, 50.02, 26.5, 58.0, NOW()),
+  ($((test_equipment_id+2)), $((test_equipment_id+2)), 225.1, 224.8, 225.3, 16.1, 16.0, 16.2, 3625.0, 480.0, 49.99, 24.0, 62.0, NOW());
 
 -- 更新测试数据
-UPDATE electrical_data SET status = 'ALERT', temperature = 35.0 WHERE device_id = 'TEST_DEVICE_001';
+UPDATE sgcc_power.power_monitoring SET temperature = 35.0, power_active = 3400.0 WHERE equipment_id = $test_equipment_id;
 
 -- 删除测试数据
-DELETE FROM electrical_data WHERE device_id = 'TEST_DEVICE_003';
+DELETE FROM sgcc_power.power_monitoring WHERE equipment_id = $((test_equipment_id+2));
 EOF
     
     # 执行增删改操作
     log_info "执行增删改操作..."
-    if docker exec -i postgres-sgcc-source psql -U sgcc_user -d sgcc_source < /tmp/crud_operations.sql; then
+    if docker exec -i postgres-sgcc-source psql -U sgcc_user -d sgcc_source_db < /tmp/crud_operations.sql; then
         log_success "✅ 增删改操作执行成功"
         
         # 等待CDC同步

@@ -473,11 +473,183 @@ WHERE cost_efficiency = 'HIGH_PROFIT'
 ORDER BY profit DESC
 LIMIT 30;
 
--- 测试增删改操作
-UPDATE fluss_catalog.fluss.dwd_efficiency_analysis_detail 
-SET efficiency = 0.99, performance_grade = 'EXCELLENT' 
-WHERE device_id = '100001';
+-- ===============================================
+-- 🎯 增删改查监控测试 + 验证逻辑
+-- ===============================================
 
-DELETE FROM fluss_catalog.fluss.ods_large_scale_monitoring_raw 
-WHERE device_id = '100002';
-*/ 
+-- 📊 【监控 1】柱状流优化初始状态
+SELECT '=== 🎯 场景4：柱状流优化监控 ===' as monitor_title;
+
+-- 查看各层数据量
+SELECT '大规模监控数据' as layer, COUNT(*) as record_count FROM fluss_catalog.fluss.ods_large_scale_monitoring_raw
+UNION ALL
+SELECT '电压监控明细' as layer, COUNT(*) as record_count FROM fluss_catalog.fluss.dwd_voltage_monitoring_detail
+UNION ALL
+SELECT '效率分析明细' as layer, COUNT(*) as record_count FROM fluss_catalog.fluss.dwd_efficiency_analysis_detail
+UNION ALL
+SELECT '成本分析明细' as layer, COUNT(*) as record_count FROM fluss_catalog.fluss.dwd_cost_analysis_detail
+UNION ALL
+SELECT '性能汇总数据' as layer, COUNT(*) as record_count FROM fluss_catalog.fluss.dws_device_performance_summary;
+
+-- 📊 【监控 2】柱状存储性能检查
+SELECT '=== 📊 柱状存储性能监控 ===' as monitor_title;
+
+-- 检查宽表数据分布
+SELECT 
+    region,
+    device_type,
+    COUNT(*) as device_count,
+    AVG(voltage_monitoring) as avg_voltage,
+    AVG(efficiency_analysis) as avg_efficiency,
+    AVG(cost_efficiency_kwh) as avg_cost_eff
+FROM fluss_catalog.fluss.dwd_efficiency_analysis_detail
+GROUP BY region, device_type
+ORDER BY device_count DESC;
+
+-- 🔥 【测试 1】增加操作 - 插入测试大规模数据
+SELECT '=== 🔥 增加操作测试 ===' as test_title;
+
+-- 创建PostgreSQL大规模监控源数据连接（对应wide_table_stream CDC源）
+CREATE TABLE postgres_source_large_scale_monitoring_data (
+    monitoring_id STRING,
+    device_id STRING,
+    monitoring_voltage DOUBLE,
+    monitoring_current DOUBLE,
+    monitoring_temperature DOUBLE,
+    monitoring_power DOUBLE,
+    efficiency DOUBLE,
+    performance_index DOUBLE,
+    cost_per_kwh DOUBLE,
+    energy_produced_kwh DOUBLE,
+    cost_efficiency_kwh DOUBLE,
+    revenue_generated DOUBLE,
+    monitoring_time TIMESTAMP(3),
+    PRIMARY KEY (monitoring_id) NOT ENFORCED
+) WITH (
+    'connector' = 'jdbc',
+    'url' = 'jdbc:postgresql://postgres-sgcc-source:5432/sgcc_source_db',
+    'table-name' = 'large_scale_monitoring_data',
+    'username' = 'sgcc_user',
+    'password' = 'sgcc_pass_2024'
+);
+
+-- 向PostgreSQL源插入大规模监控测试数据（会被wide_table_stream CDC捕获）
+INSERT INTO postgres_source_large_scale_monitoring_data VALUES
+('LARGE_TEST001', 'TEST001', 235.5, 150.0, 45.2, 350.8, 0.96, 85.3, 25.6, 1250.8, 2.35, 2950.5, CURRENT_TIMESTAMP),
+('LARGE_TEST002', 'TEST002', 228.3, 125.5, 38.7, 280.3, 0.94, 78.2, 22.1, 980.3, 2.42, 2370.9, CURRENT_TIMESTAMP),
+('LARGE_TEST003', 'TEST003', 240.1, 180.2, 52.1, 420.5, 0.92, 92.7, 28.9, 1580.2, 2.18, 3445.1, CURRENT_TIMESTAMP);
+
+-- 验证插入结果
+SELECT 'ODS大规模数据新增验证' as verification, COUNT(*) as new_records 
+FROM fluss_catalog.fluss.ods_large_scale_monitoring_raw 
+WHERE monitoring_id LIKE 'LARGE_TEST%';
+
+SELECT 'DWD效率分析新增验证' as verification, COUNT(*) as new_records 
+FROM fluss_catalog.fluss.dwd_efficiency_analysis_detail 
+WHERE device_id LIKE 'TEST%';
+
+-- 🔄 【测试 2】更新操作测试
+SELECT '=== 🔄 更新操作测试 ===' as test_title;
+
+-- 更新前状态查询
+SELECT 'UPDATE前效率状态' as status, device_id, efficiency, performance_grade
+FROM fluss_catalog.fluss.dwd_efficiency_analysis_detail 
+WHERE device_id = 'TEST001';
+
+-- 在PostgreSQL源执行大规模监控数据更新（会被wide_table_stream CDC捕获）
+UPDATE postgres_source_large_scale_monitoring_data 
+SET efficiency = 0.99, monitoring_temperature = 35.0, performance_index = 95.8
+WHERE monitoring_id = 'LARGE_TEST001';
+
+-- 验证更新通过CDC同步到Fluss
+SELECT 'UPDATE后大规模监控验证' as status, monitoring_id, efficiency, monitoring_temperature, performance_index
+FROM fluss_catalog.fluss.ods_large_scale_monitoring_raw 
+WHERE monitoring_id = 'LARGE_TEST001';
+
+-- 大规模数据更新验证
+SELECT 'UPDATE大规模数据验证' as status, monitoring_id, efficiency, monitoring_temperature
+FROM fluss_catalog.fluss.ods_large_scale_monitoring_raw 
+WHERE monitoring_id = 'LARGE_TEST001';
+
+-- ❌ 【测试 3】删除操作测试
+SELECT '=== ❌ 删除操作测试 ===' as test_title;
+
+-- 删除前统计
+SELECT 'DELETE前大规模数据统计' as phase, COUNT(*) as total_count 
+FROM fluss_catalog.fluss.ods_large_scale_monitoring_raw;
+
+-- 在PostgreSQL源执行大规模监控数据删除（会被wide_table_stream CDC捕获）
+DELETE FROM postgres_source_large_scale_monitoring_data 
+WHERE monitoring_id = 'LARGE_TEST003';
+
+-- 删除后验证
+SELECT 'DELETE大规模数据验证(应为0)' as verification, COUNT(*) as should_be_zero 
+FROM fluss_catalog.fluss.ods_large_scale_monitoring_raw 
+WHERE monitoring_id = 'LARGE_TEST003';
+
+SELECT 'DELETE效率数据验证(应为0)' as verification, COUNT(*) as should_be_zero 
+FROM fluss_catalog.fluss.dwd_efficiency_analysis_detail 
+WHERE device_id = 'TEST002';
+
+-- 📈 【监控 3】柱状存储I/O优化监控
+SELECT '=== 📈 柱状存储I/O优化监控 ===' as monitor_title;
+
+-- 测试列式查询性能（只读取需要的列）
+SELECT 'I/O优化效果' as metric,
+       COUNT(*) as total_records,
+       AVG(efficiency) as avg_efficiency,
+       COUNT(CASE WHEN performance_grade = 'EXCELLENT' THEN 1 END) as excellent_count
+FROM fluss_catalog.fluss.dwd_efficiency_analysis_detail;
+
+-- 宽表查询性能测试
+SELECT '宽表查询性能' as metric,
+       COUNT(*) as total_records,
+       AVG(monitoring_voltage) as avg_voltage,
+       AVG(monitoring_temperature) as avg_temp,
+       AVG(cost_efficiency_kwh) as avg_cost_eff
+FROM fluss_catalog.fluss.ods_large_scale_monitoring_raw;
+
+-- 📋 【监控 4】最终结果验证
+SELECT '=== 📋 最终结果验证 ===' as monitor_title;
+
+-- 查看PostgreSQL中的柱状性能报表结果
+SELECT '柱状性能报表结果' as result_type, 
+       region, 
+       total_devices, 
+       avg_voltage_efficiency,
+       avg_cost_efficiency,
+       performance_grade,
+       report_time
+FROM postgres_columnar_performance_result 
+ORDER BY report_time DESC 
+LIMIT 10;
+
+-- 🎯 【总结】场景4测试完成状态
+SELECT '=== 🎯 场景4测试完成总结 ===' as summary_title;
+
+SELECT 
+    '柱状存储完整性' as metric,
+    CONCAT('大规模:', large_count, ' | 电压:', volt_count, ' | 效率:', eff_count, ' | 成本:', cost_count, ' | PostgreSQL:', pg_count) as layer_counts
+FROM (
+    SELECT 
+        (SELECT COUNT(*) FROM fluss_catalog.fluss.ods_large_scale_monitoring_raw) as large_count,
+        (SELECT COUNT(*) FROM fluss_catalog.fluss.dwd_voltage_monitoring_detail) as volt_count,
+        (SELECT COUNT(*) FROM fluss_catalog.fluss.dwd_efficiency_analysis_detail) as eff_count,
+        (SELECT COUNT(*) FROM fluss_catalog.fluss.dwd_cost_analysis_detail) as cost_count,
+        (SELECT COUNT(*) FROM postgres_columnar_performance_result) as pg_count
+);
+
+-- ✅ 【验证】增删改查操作成功验证
+SELECT '增删改查验证结果' as final_verification,
+       CASE 
+           WHEN (SELECT COUNT(*) FROM fluss_catalog.fluss.ods_large_scale_monitoring_raw WHERE monitoring_id = 'LARGE_TEST001') = 1 THEN '✅ 增加成功'
+           ELSE '❌ 增加失败'
+       END as insert_status,
+       CASE 
+           WHEN (SELECT efficiency FROM fluss_catalog.fluss.dwd_efficiency_analysis_detail WHERE device_id = 'TEST001') = 0.99 THEN '✅ 更新成功'
+           ELSE '❌ 更新失败'
+       END as update_status,
+       CASE 
+           WHEN (SELECT COUNT(*) FROM fluss_catalog.fluss.ods_large_scale_monitoring_raw WHERE monitoring_id = 'LARGE_TEST003') = 0 THEN '✅ 删除成功'
+           ELSE '❌ 删除失败'
+       END as delete_status; 

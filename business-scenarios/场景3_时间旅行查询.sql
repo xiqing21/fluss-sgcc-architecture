@@ -420,11 +420,175 @@ SELECT
     post.avg_efficiency_post
 FROM pre_fault_data pre, post_fault_data post;
 
--- 测试增删改操作
-UPDATE fluss_catalog.fluss.dwd_device_timeseries_detail 
-SET efficiency = 0.95, health_score = 95.0 
-WHERE device_id = '100001';
+-- ===============================================
+-- 🎯 增删改查监控测试 + 验证逻辑
+-- ===============================================
 
-DELETE FROM fluss_catalog.fluss.ods_device_historical_raw 
-WHERE device_id = '100002' AND record_time < CURRENT_TIMESTAMP - INTERVAL '1' HOUR;
-*/ 
+-- 📊 【监控 1】时间旅行查询初始状态
+SELECT '=== 🎯 场景3：时间旅行查询监控 ===' as monitor_title;
+
+-- 查看各层数据量
+SELECT '历史原始数据' as layer, COUNT(*) as record_count FROM fluss_catalog.fluss.ods_device_historical_raw
+UNION ALL
+SELECT '时序明细数据' as layer, COUNT(*) as record_count FROM fluss_catalog.fluss.dwd_device_timeseries_detail
+UNION ALL
+SELECT '时序汇总数据' as layer, COUNT(*) as record_count FROM fluss_catalog.fluss.dws_device_timeseries_summary
+UNION ALL
+SELECT '故障分析报表' as layer, COUNT(*) as record_count FROM fluss_catalog.fluss.ads_fault_analysis_report;
+
+-- 📊 【监控 2】时序数据质量检查
+SELECT '=== 📊 时序数据质量监控 ===' as monitor_title;
+
+-- 检查时序数据分布
+SELECT 
+    device_type,
+    COUNT(*) as record_count,
+    AVG(efficiency) as avg_efficiency,
+    AVG(health_score) as avg_health,
+    MIN(record_time) as earliest_time,
+    MAX(record_time) as latest_time
+FROM fluss_catalog.fluss.dwd_device_timeseries_detail
+GROUP BY device_type
+ORDER BY record_count DESC;
+
+-- 🔥 【测试 1】增加操作 - 插入测试时序数据
+SELECT '=== 🔥 增加操作测试 ===' as test_title;
+
+-- 创建PostgreSQL历史数据源连接（对应device_historical_stream CDC源）
+CREATE TABLE postgres_source_device_historical_data (
+    record_id STRING,
+    device_id STRING,
+    voltage DOUBLE,
+    current_val DOUBLE,
+    temperature DOUBLE,
+    power_output DOUBLE,
+    efficiency DOUBLE,
+    status STRING,
+    record_time TIMESTAMP(3),
+    PRIMARY KEY (record_id) NOT ENFORCED
+) WITH (
+    'connector' = 'jdbc',
+    'url' = 'jdbc:postgresql://postgres-sgcc-source:5432/sgcc_source_db',
+    'table-name' = 'device_historical_data',
+    'username' = 'sgcc_user',
+    'password' = 'sgcc_pass_2024'
+);
+
+-- 向PostgreSQL源插入历史测试数据（会被device_historical_stream CDC捕获）
+INSERT INTO postgres_source_device_historical_data VALUES
+('HIST_TEST001', 'TEST001', 235.5, 150.0, 45.2, 350.8, 0.96, 'ACTIVE', CURRENT_TIMESTAMP - INTERVAL '2' HOUR),
+('HIST_TEST002', 'TEST002', 228.3, 125.5, 38.7, 280.3, 0.94, 'WARNING', CURRENT_TIMESTAMP - INTERVAL '1' HOUR),
+('HIST_TEST003', 'TEST003', 240.1, 180.2, 52.1, 420.5, 0.92, 'NORMAL', CURRENT_TIMESTAMP);
+
+-- 验证插入结果
+SELECT 'ODS历史数据新增验证' as verification, COUNT(*) as new_records 
+FROM fluss_catalog.fluss.ods_device_historical_raw 
+WHERE record_id LIKE 'HIST_TEST%';
+
+SELECT 'DWD时序数据新增验证' as verification, COUNT(*) as new_records 
+FROM fluss_catalog.fluss.dwd_device_timeseries_detail 
+WHERE device_id LIKE 'TEST%';
+
+-- 🔄 【测试 2】更新操作测试
+SELECT '=== 🔄 更新操作测试 ===' as test_title;
+
+-- 更新前状态查询
+SELECT 'UPDATE前时序状态' as status, device_id, efficiency, health_score
+FROM fluss_catalog.fluss.dwd_device_timeseries_detail 
+WHERE device_id = 'TEST001';
+
+-- 在PostgreSQL源执行历史数据更新（会被device_historical_stream CDC捕获）
+UPDATE postgres_source_device_historical_data 
+SET efficiency = 0.99, status = 'OPTIMAL'
+WHERE record_id = 'HIST_TEST001';
+
+-- 验证更新通过CDC同步到Fluss
+SELECT 'UPDATE后历史数据验证' as status, record_id, efficiency, status
+FROM fluss_catalog.fluss.ods_device_historical_raw 
+WHERE record_id = 'HIST_TEST001';
+
+-- 历史数据更新验证
+SELECT 'UPDATE历史数据验证' as status, record_id, efficiency, status
+FROM fluss_catalog.fluss.ods_device_historical_raw 
+WHERE record_id = 'HIST_TEST001';
+
+-- ❌ 【测试 3】删除操作测试
+SELECT '=== ❌ 删除操作测试 ===' as test_title;
+
+-- 删除前统计
+SELECT 'DELETE前历史数据统计' as phase, COUNT(*) as total_count 
+FROM fluss_catalog.fluss.ods_device_historical_raw;
+
+-- 在PostgreSQL源执行历史数据删除（会被device_historical_stream CDC捕获）
+DELETE FROM postgres_source_device_historical_data 
+WHERE record_id = 'HIST_TEST003';
+
+-- 删除后验证
+SELECT 'DELETE历史数据验证(应为0)' as verification, COUNT(*) as should_be_zero 
+FROM fluss_catalog.fluss.ods_device_historical_raw 
+WHERE record_id = 'HIST_TEST003';
+
+SELECT 'DELETE时序数据验证(应为0)' as verification, COUNT(*) as should_be_zero 
+FROM fluss_catalog.fluss.dwd_device_timeseries_detail 
+WHERE device_id = 'TEST002';
+
+-- 📈 【监控 3】时间旅行查询性能监控
+SELECT '=== 📈 时间旅行查询性能监控 ===' as monitor_title;
+
+-- 时间旅行查询测试（查看1小时前的数据状态）
+SELECT 'FOR SYSTEM_TIME查询测试' as metric,
+       COUNT(*) as historical_records,
+       AVG(efficiency) as avg_efficiency_1h_ago
+FROM fluss_catalog.fluss.dwd_device_timeseries_detail 
+FOR SYSTEM_TIME AS OF CURRENT_TIMESTAMP - INTERVAL '1' HOUR;
+
+-- 数据时间范围检查
+SELECT '时序数据范围' as metric,
+       COUNT(*) as total_records,
+       MIN(record_time) as earliest_record,
+       MAX(record_time) as latest_record,
+       EXTRACT(HOUR FROM (MAX(record_time) - MIN(record_time))) as time_span_hours
+FROM fluss_catalog.fluss.dwd_device_timeseries_detail;
+
+-- 📋 【监控 4】最终结果验证
+SELECT '=== 📋 最终结果验证 ===' as monitor_title;
+
+-- 查看PostgreSQL中的故障分析结果
+SELECT '故障分析结果' as result_type, 
+       device_id, 
+       fault_type, 
+       fault_duration_hours,
+       performance_impact,
+       analysis_time
+FROM postgres_fault_analysis_result 
+ORDER BY analysis_time DESC 
+LIMIT 10;
+
+-- 🎯 【总结】场景3测试完成状态
+SELECT '=== 🎯 场景3测试完成总结 ===' as summary_title;
+
+SELECT 
+    '时序数据完整性' as metric,
+    CONCAT('历史:', hist_count, ' | 时序:', ts_count, ' | 汇总:', summary_count, ' | PostgreSQL:', pg_count) as layer_counts
+FROM (
+    SELECT 
+        (SELECT COUNT(*) FROM fluss_catalog.fluss.ods_device_historical_raw) as hist_count,
+        (SELECT COUNT(*) FROM fluss_catalog.fluss.dwd_device_timeseries_detail) as ts_count,
+        (SELECT COUNT(*) FROM fluss_catalog.fluss.dws_device_timeseries_summary) as summary_count,
+        (SELECT COUNT(*) FROM postgres_fault_analysis_result) as pg_count
+);
+
+-- ✅ 【验证】增删改查操作成功验证
+SELECT '增删改查验证结果' as final_verification,
+       CASE 
+           WHEN (SELECT COUNT(*) FROM fluss_catalog.fluss.ods_device_historical_raw WHERE record_id = 'HIST_TEST001') = 1 THEN '✅ 增加成功'
+           ELSE '❌ 增加失败'
+       END as insert_status,
+       CASE 
+           WHEN (SELECT efficiency FROM fluss_catalog.fluss.dwd_device_timeseries_detail WHERE device_id = 'TEST001') = 0.99 THEN '✅ 更新成功'
+           ELSE '❌ 更新失败'
+       END as update_status,
+       CASE 
+           WHEN (SELECT COUNT(*) FROM fluss_catalog.fluss.ods_device_historical_raw WHERE record_id = 'HIST_TEST003') = 0 THEN '✅ 删除成功'
+           ELSE '❌ 删除失败'
+       END as delete_status; 
