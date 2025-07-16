@@ -1,0 +1,13 @@
+-- 结束后执行sql文件
+-- docker exec -it sql-client-sgcc /opt/flink/bin/sql-client.sh -f /opt/sql/1_cdc_source_to_fluss.sql
+
+-- 🔧 完整问题解决方案总结：
+-- 1. 端口配置问题 ✅
+-- 问题: 容器间通信使用了错误的端口 5442
+-- 解决: 改为容器内部端口 5432
+-- 2. 时间戳类型问题 ✅
+-- 问题: TIMESTAMP_LTZ(3) 与 PostgreSQL 的 timestamp(3) without time zone 不匹配
+-- 解决: 全部改为 TIMESTAMP(3)
+-- 3. REPLICA IDENTITY 问题 ✅
+-- 问题: PostgreSQL 表未设置 REPLICA IDENTITY FULL，导致 UPDATE/DELETE 操作缺少 "before" 字段
+-- 解决: 对所有表执行 ALTER TABLE REPLICA IDENTITY FULL 

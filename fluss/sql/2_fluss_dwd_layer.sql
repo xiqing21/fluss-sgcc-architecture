@@ -1,510 +1,287 @@
--- ========================================
--- 国网电力监控系统 - Fluss架构
--- 第二步：DWD层数据清洗和增强
--- ========================================
+-- ===========================
+-- 第二步：DWD层 - 明细数据层
+-- ===========================
 
--- 设置执行环境
-SET 'execution.checkpointing.interval' = '60s';
-SET 'table.exec.source.idle-timeout' = '30s';
+USE CATALOG fluss;
 
--- 使用Fluss Catalog
--- 设置执行环境
-SET 'execution.checkpointing.interval' = '60s';
-SET 'table.exec.source.idle-timeout' = '30s';
+-- ===========================
+-- 创建DWD层表：明细数据层
+-- ===========================
 
--- 创建Fluss Catalog（每个会话都需要重新创建）
-CREATE CATALOG IF NOT EXISTS fluss_catalog WITH (
-    'type' = 'fluss',
-    'bootstrap.servers' = 'coordinator-server-sgcc:9123'
-);
-
-USE CATALOG fluss_catalog;
-
--- ========================================
--- 创建DWD层Fluss表
--- ========================================
-
--- DWD层电力设备明细表
-CREATE TABLE IF NOT EXISTS fluss_dwd_power_equipment (
-    equipment_id BIGINT,
-    equipment_name STRING,
-    equipment_type STRING,
-    equipment_type_code STRING,
-    location STRING,
-    province STRING,
-    city STRING,
-    district STRING,
-    voltage_level STRING,
-    voltage_level_code INT,
-    capacity_mw DECIMAL(10,2),
-    capacity_level STRING,
-    manufacturer STRING,
-    installation_date DATE,
-    installation_year INT,
-    last_maintenance_date DATE,
-    maintenance_interval_days INT,
-    status STRING,
-    is_critical BOOLEAN,
-    created_at TIMESTAMP(3),
-    updated_at TIMESTAMP(3),    PRIMARY KEY (equipment_id) NOT ENFORCED
+-- 用户明细表（DWD）
+CREATE TABLE IF NOT EXISTS dwd_users (
+    user_id INT,
+    username STRING,
+    email STRING,
+    created_at TIMESTAMP_LTZ(3),
+    updated_at TIMESTAMP_LTZ(3),
+    etl_time TIMESTAMP_LTZ(3),
+    PRIMARY KEY (user_id) NOT ENFORCED
 ) WITH (
-    'connector' = 'fluss',
-    'bootstrap.servers' = 'coordinator-server-sgcc:9123',
-    'table-name' = 'dwd_power_equipment',
-    'bucket' = '4',
-    'value.format' = 'json',
-    'fluss.table.datalake.enabled' = 'true',
-    'fluss.table.log.retention' = '7d',
-    'fluss.table.compaction.enabled' = 'true'
+    'bucket.num' = '3'
 );
 
--- DWD层电力监控明细表
-CREATE TABLE IF NOT EXISTS fluss_dwd_power_monitoring (
-    monitoring_id BIGINT,
-    equipment_id BIGINT,
-    equipment_name STRING,
-    equipment_type STRING,
-    voltage_a DECIMAL(8,2),
-    voltage_b DECIMAL(8,2),
-    voltage_c DECIMAL(8,2),
-    voltage_avg DECIMAL(8,2),
-    voltage_imbalance DECIMAL(6,4),
-    current_a DECIMAL(8,2),
-    current_b DECIMAL(8,2),
-    current_c DECIMAL(8,2),
-    current_avg DECIMAL(8,2),
-    current_imbalance DECIMAL(6,4),
-    power_active DECIMAL(10,2),
-    power_reactive DECIMAL(10,2),
-    power_factor DECIMAL(6,4),
-    power_apparent DECIMAL(10,2),
-    frequency DECIMAL(6,3),
-    frequency_deviation DECIMAL(6,4),
-    temperature DECIMAL(6,2),
-    humidity DECIMAL(5,2),
-    monitoring_date DATE,
-    monitoring_hour INT,
-    monitoring_minute INT,
-    is_peak_hour BOOLEAN,
-    is_working_day BOOLEAN,
-    monitoring_time TIMESTAMP(3),
-    created_at TIMESTAMP(3),    PRIMARY KEY (monitoring_id) NOT ENFORCED
+-- 订单明细表（DWD）- 包含用户信息的宽表
+CREATE TABLE IF NOT EXISTS dwd_orders (
+    order_id INT,
+    user_id INT,
+    username STRING,
+    email STRING,
+    order_amount DECIMAL(10,2),
+    order_status STRING,
+    created_at TIMESTAMP_LTZ(3),
+    updated_at TIMESTAMP_LTZ(3),
+    etl_time TIMESTAMP_LTZ(3),
+    PRIMARY KEY (order_id) NOT ENFORCED
 ) WITH (
-    'connector' = 'fluss',
-    'bootstrap.servers' = 'coordinator-server-sgcc:9123',
-    'table-name' = 'dwd_power_monitoring',
-    'bucket' = '8',
-    'value.format' = 'json',
-    'fluss.table.datalake.enabled' = 'true',
-    'fluss.table.log.retention' = '3d',
-    'fluss.table.compaction.enabled' = 'false'
+    'bucket.num' = '3'
 );
 
--- DWD层设备告警明细表
-CREATE TABLE IF NOT EXISTS fluss_dwd_equipment_alarms (
-    alarm_id BIGINT,
-    equipment_id BIGINT,
-    equipment_name STRING,
-    equipment_type STRING,
-    alarm_type STRING,
-    alarm_level INT,
-    alarm_level_name STRING,
-    alarm_message STRING,
-    alarm_code STRING,
-    alarm_category STRING,
-    is_resolved BOOLEAN,
-    resolution_time_minutes INT,
-    occurred_date DATE,
-    occurred_hour INT,
-    occurred_at TIMESTAMP(3),
-    resolved_at TIMESTAMP(3),
-    created_at TIMESTAMP(3),
-    updated_at TIMESTAMP(3),    PRIMARY KEY (alarm_id) NOT ENFORCED
+-- 订单商品明细表（DWD）- 包含用户和订单信息的宽表
+CREATE TABLE IF NOT EXISTS dwd_order_items (
+    item_id INT,
+    order_id INT,
+    user_id INT,
+    username STRING,
+    product_name STRING,
+    quantity INT,
+    unit_price DECIMAL(10,2),
+    total_price DECIMAL(10,2),
+    created_at TIMESTAMP_LTZ(3),
+    etl_time TIMESTAMP_LTZ(3),
+    PRIMARY KEY (item_id) NOT ENFORCED
 ) WITH (
-    'connector' = 'fluss',
-    'bootstrap.servers' = 'coordinator-server-sgcc:9123',
-    'table-name' = 'dwd_equipment_alarms',
-    'bucket' = '4',
-    'value.format' = 'json',
-    'fluss.table.datalake.enabled' = 'true',
-    'fluss.table.log.retention' = '30d',
-    'fluss.table.compaction.enabled' = 'true'
+    'bucket.num' = '3'
 );
 
--- ========================================
--- DWD层数据处理任务
--- ========================================
+-- ===========================
+-- DWD层数据加工逻辑
+-- ===========================
 
--- 处理电力设备数据（数据清洗和增强）
-INSERT INTO fluss_dwd_power_equipment
+-- 用户明细数据加工
+INSERT INTO dwd_users
 SELECT 
-    equipment_id,
-    equipment_name,
-    equipment_type,
-    -- 设备类型编码
-    CASE 
-        WHEN equipment_type = '变压器' THEN 'TRF'
-        WHEN equipment_type = '发电机' THEN 'GEN'
-        WHEN equipment_type = '输电线路' THEN 'LINE'
-        WHEN equipment_type = '配电设备' THEN 'DIST'
-        ELSE 'OTHER'
-    END as equipment_type_code,
-    location,
-    -- 解析地址信息
-    CASE 
-        WHEN location LIKE '%北京%' THEN '北京'
-        WHEN location LIKE '%上海%' THEN '上海'
-        WHEN location LIKE '%广州%' THEN '广东'
-        WHEN location LIKE '%深圳%' THEN '广东'
-        WHEN location LIKE '%杭州%' THEN '浙江'
-        ELSE '其他'
-    END as province,
-    CASE 
-        WHEN location LIKE '%朝阳%' THEN '朝阳区'
-        WHEN location LIKE '%东城%' THEN '东城区'
-        WHEN location LIKE '%海淀%' THEN '海淀区'
-        WHEN location LIKE '%丰台%' THEN '丰台区'
-        ELSE SUBSTRING(location, LOCATE('区', location) - 2, 3)
-    END as city,
-    CASE 
-        WHEN location LIKE '%区%' THEN SUBSTRING(location, LOCATE('区', location) - 2, 3)
-        ELSE NULL
-    END as district,
-    voltage_level,
-    -- 电压等级编码
-    CASE 
-        WHEN voltage_level = '500kV' THEN 500
-        WHEN voltage_level = '220kV' THEN 220
-        WHEN voltage_level = '110kV' THEN 110
-        WHEN voltage_level = '35kV' THEN 35
-        WHEN voltage_level = '10kV' THEN 10
-        ELSE 0
-    END as voltage_level_code,
-    capacity_mw,
-    -- 容量级别
-    CASE 
-        WHEN capacity_mw >= 300 THEN '大型'
-        WHEN capacity_mw >= 100 THEN '中型'
-        WHEN capacity_mw >= 10 THEN '小型'
-        ELSE '微型'
-    END as capacity_level,
-    manufacturer,
-    installation_date,
-    YEAR(installation_date) as installation_year,
-    last_maintenance_date,
-    DATEDIFF(CURRENT_DATE, last_maintenance_date) as maintenance_interval_days,
-    status,
-    -- 判断是否为关键设备
-    CASE 
-        WHEN capacity_mw >= 200 OR voltage_level IN ('500kV', '220kV') THEN TRUE
-        ELSE FALSE
-    END as is_critical,
-    created_at,
-    updated_at
-FROM fluss_ods_power_equipment;
-
--- 处理实时监控数据（计算派生字段）
-INSERT INTO fluss_dwd_power_monitoring
-SELECT 
-    m.monitoring_id,
-    m.equipment_id,
-    e.equipment_name,
-    e.equipment_type,
-    m.voltage_a,
-    m.voltage_b,
-    m.voltage_c,
-    -- 计算平均电压
-    (m.voltage_a + m.voltage_b + m.voltage_c) / 3 as voltage_avg,
-    -- 计算电压不平衡度
-    GREATEST(
-        ABS(m.voltage_a - (m.voltage_a + m.voltage_b + m.voltage_c) / 3),
-        ABS(m.voltage_b - (m.voltage_a + m.voltage_b + m.voltage_c) / 3),
-        ABS(m.voltage_c - (m.voltage_a + m.voltage_b + m.voltage_c) / 3)
-    ) / ((m.voltage_a + m.voltage_b + m.voltage_c) / 3) as voltage_imbalance,
-    m.current_a,
-    m.current_b,
-    m.current_c,
-    -- 计算平均电流
-    (m.current_a + m.current_b + m.current_c) / 3 as current_avg,
-    -- 计算电流不平衡度
-    GREATEST(
-        ABS(m.current_a - (m.current_a + m.current_b + m.current_c) / 3),
-        ABS(m.current_b - (m.current_a + m.current_b + m.current_c) / 3),
-        ABS(m.current_c - (m.current_a + m.current_b + m.current_c) / 3)
-    ) / ((m.current_a + m.current_b + m.current_c) / 3) as current_imbalance,
-    m.power_active,
-    m.power_reactive,
-    -- 计算功率因数
-    CASE 
-        WHEN SQRT(m.power_active * m.power_active + m.power_reactive * m.power_reactive) > 0 
-        THEN m.power_active / SQRT(m.power_active * m.power_active + m.power_reactive * m.power_reactive)
-        ELSE 0
-    END as power_factor,
-    -- 计算视在功率
-    SQRT(m.power_active * m.power_active + m.power_reactive * m.power_reactive) as power_apparent,
-    m.frequency,
-    -- 计算频率偏差（以50Hz为基准）
-    m.frequency - 50.0 as frequency_deviation,
-    m.temperature,
-    m.humidity,
-    -- 时间维度字段
-    DATE(m.monitoring_time) as monitoring_date,
-    EXTRACT(HOUR FROM m.monitoring_time) as monitoring_hour,
-    EXTRACT(MINUTE FROM m.monitoring_time) as monitoring_minute,
-    -- 判断是否为用电高峰期（8-11点，18-21点）
-    CASE 
-        WHEN EXTRACT(HOUR FROM m.monitoring_time) BETWEEN 8 AND 11 
-             OR EXTRACT(HOUR FROM m.monitoring_time) BETWEEN 18 AND 21 
-        THEN TRUE
-        ELSE FALSE
-    END as is_peak_hour,
-    -- 判断是否为工作日（周一到周五）
-    CASE 
-        WHEN EXTRACT(DAY_OF_WEEK FROM m.monitoring_time) BETWEEN 2 AND 6 
-        THEN TRUE
-        ELSE FALSE
-    END as is_working_day,
-    m.monitoring_time,
-    m.created_at
-FROM fluss_ods_power_monitoring m
-LEFT JOIN fluss_ods_power_equipment e ON m.equipment_id = e.equipment_id;
-
--- 处理设备告警数据（增强告警信息）
-INSERT INTO fluss_dwd_equipment_alarms
-SELECT 
-    a.alarm_id,
-    a.equipment_id,
-    e.equipment_name,
-    e.equipment_type,
-    a.alarm_type,
-    a.alarm_level,
-    -- 告警级别名称
-    CASE 
-        WHEN a.alarm_level = 1 THEN 'INFO'
-        WHEN a.alarm_level = 2 THEN 'WARNING'
-        WHEN a.alarm_level = 3 THEN 'MINOR'
-        WHEN a.alarm_level = 4 THEN 'MAJOR'
-        WHEN a.alarm_level = 5 THEN 'CRITICAL'
-        ELSE 'UNKNOWN'
-    END as alarm_level_name,
-    a.alarm_message,
-    a.alarm_code,
-    -- 告警分类
-    CASE 
-        WHEN a.alarm_code LIKE '%TEMP%' THEN '温度告警'
-        WHEN a.alarm_code LIKE '%CURRENT%' THEN '电流告警'
-        WHEN a.alarm_code LIKE '%VOLTAGE%' THEN '电压告警'
-        WHEN a.alarm_code LIKE '%OVERLOAD%' THEN '过载告警'
-        WHEN a.alarm_code LIKE '%HUMIDITY%' THEN '湿度告警'
-        WHEN a.alarm_code LIKE '%MAINTENANCE%' THEN '维护信息'
-        ELSE '其他告警'
-    END as alarm_category,
-    a.is_resolved,
-    -- 计算解决时间（分钟）
-    CASE 
-        WHEN a.is_resolved = TRUE AND a.resolved_at IS NOT NULL 
-        THEN CAST((UNIX_TIMESTAMP(a.resolved_at) - UNIX_TIMESTAMP(a.occurred_at)) / 60 AS INT)
-        ELSE NULL
-    END as resolution_time_minutes,
-    DATE(a.occurred_at) as occurred_date,
-    EXTRACT(HOUR FROM a.occurred_at) as occurred_hour,
-    a.occurred_at,
-    a.resolved_at,
-    a.created_at,
-    a.updated_at
-FROM fluss_ods_equipment_alarms a
-LEFT JOIN fluss_ods_power_equipment e ON a.equipment_id = e.equipment_id;
-
--- ========================================
--- 数据质量检查
--- ========================================
-
--- 创建数据质量检查结果表
-CREATE TABLE IF NOT EXISTS fluss_dwd_quality_check (
-    check_id BIGINT,
-    table_name STRING,
-    check_type STRING,
-    check_result STRING,
-    error_count BIGINT,
-    total_count BIGINT,
-    check_time TIMESTAMP(3),
-    PRIMARY KEY (check_id) NOT ENFORCED
-) WITH (
-    'connector' = 'fluss',
-    'bootstrap.servers' = 'coordinator-server-sgcc:9123',
-    'table-name' = 'dwd_quality_check',
-    'bucket' = '2',
-    'value.format' = 'json',
-    'fluss.table.log.retention' = '7d'
-);
-
--- DWD层数据质量检查
-INSERT INTO fluss_dwd_quality_check
-SELECT 
-    CAST(UNIX_TIMESTAMP() AS BIGINT) as check_id,
-    'dwd_power_monitoring' as table_name,
-    'voltage_range_check' as check_type,
-    CASE 
-        WHEN COUNT(CASE WHEN voltage_avg < 0 OR voltage_avg > 1000 THEN 1 END) = 0 
-        THEN 'PASS'
-        ELSE 'FAIL'
-    END as check_result,
-    COUNT(CASE WHEN voltage_avg < 0 OR voltage_avg > 1000 THEN 1 END) as error_count,
-    COUNT(*) as total_count,
-    CURRENT_TIMESTAMP as check_time
-FROM fluss_dwd_power_monitoring
-WHERE monitoring_time >= CURRENT_TIMESTAMP - INTERVAL '1' HOUR;
-
--- 异常数据告警
-CREATE TABLE IF NOT EXISTS fluss_dwd_anomaly_alerts (
-    alert_id BIGINT,
-    equipment_id BIGINT,
-    equipment_name STRING,
-    anomaly_type STRING,
-    anomaly_description STRING,
-    severity_level STRING,
-    alert_time TIMESTAMP(3),
-    PRIMARY KEY (alert_id) NOT ENFORCED
-) WITH (
-    'connector' = 'fluss',
-    'bootstrap.servers' = 'coordinator-server-sgcc:9123',
-    'table-name' = 'dwd_anomaly_alerts',
-    'bucket' = '4',
-    'value.format' = 'json',
-    'fluss.table.log.retention' = '30d'
-);
-
--- ========================================
--- 启动DWD数据流作业
--- ========================================
-
--- 启动电力设备DWD数据流
-INSERT INTO fluss_dwd_power_equipment
-SELECT 
-    equipment_id,
-    equipment_name,
-    equipment_type,
-    CASE 
-        WHEN equipment_type = '变压器' THEN 'T'
-        WHEN equipment_type = '输电线路' THEN 'L'
-        WHEN equipment_type = '发电机' THEN 'G'
-        WHEN equipment_type = '配电设备' THEN 'D'
-        ELSE 'O'
-    END as equipment_type_code,
-    location,
-    REGEXP_EXTRACT(location, '([^区]+)区') as province,
-    REGEXP_EXTRACT(location, '北京([^区]+)区') as city,
-    REGEXP_EXTRACT(location, '([^区]+)区') as district,
-    voltage_level,
-    CASE 
-        WHEN voltage_level = '110kV' THEN 110
-        WHEN voltage_level = '220kV' THEN 220
-        WHEN voltage_level = '500kV' THEN 500
-        ELSE 0
-    END as voltage_level_code,
-    capacity_mw,
-    CASE 
-        WHEN capacity_mw < 10 THEN 'Small'
-        WHEN capacity_mw < 100 THEN 'Medium'
-        ELSE 'Large'
-    END as capacity_level,
-    manufacturer,
-    installation_date,
-    YEAR(installation_date) as installation_year,
-    DATEDIFF(CURRENT_DATE, installation_date) as age_days,
-    last_maintenance_date,
-    DATEDIFF(CURRENT_DATE, last_maintenance_date) as days_since_maintenance,
-    status,
-    CASE 
-        WHEN status = 'ACTIVE' THEN 1
-        ELSE 0
-    END as is_active,
-    created_at,
-    updated_at
-FROM fluss_ods_power_equipment;
-
--- 启动实时监控DWD数据流
-INSERT INTO fluss_dwd_power_monitoring
-SELECT 
-    monitoring_id,
-    equipment_id,
-    voltage_a,
-    voltage_b,
-    voltage_c,
-    (voltage_a + voltage_b + voltage_c) / 3 as voltage_avg,
-    GREATEST(voltage_a, voltage_b, voltage_c) as voltage_max,
-    LEAST(voltage_a, voltage_b, voltage_c) as voltage_min,
-    (GREATEST(voltage_a, voltage_b, voltage_c) - LEAST(voltage_a, voltage_b, voltage_c)) / 
-    ((voltage_a + voltage_b + voltage_c) / 3) as voltage_imbalance,
-    current_a,
-    current_b,
-    current_c,
-    (current_a + current_b + current_c) / 3 as current_avg,
-    GREATEST(current_a, current_b, current_c) as current_max,
-    LEAST(current_a, current_b, current_c) as current_min,
-    power_active,
-    power_reactive,
-    SQRT(power_active * power_active + power_reactive * power_reactive) as power_apparent,
-    CASE 
-        WHEN power_reactive = 0 THEN 1.0
-        ELSE power_active / SQRT(power_active * power_active + power_reactive * power_reactive)
-    END as power_factor,
-    frequency,
-    temperature,
-    humidity,
-    monitoring_time,
-    CASE 
-        WHEN voltage_avg BETWEEN 200 AND 240 THEN 'NORMAL'
-        WHEN voltage_avg < 200 THEN 'LOW'
-        ELSE 'HIGH'
-    END as voltage_status,
-    CASE 
-        WHEN frequency BETWEEN 49.5 AND 50.5 THEN 'NORMAL'
-        ELSE 'ABNORMAL'
-    END as frequency_status,
-    CASE 
-        WHEN temperature > 80 THEN 'HIGH'
-        WHEN temperature > 60 THEN 'MEDIUM'
-        ELSE 'NORMAL'
-    END as temperature_status,
-    CASE 
-        WHEN power_factor > 0.9 THEN 'GOOD'
-        WHEN power_factor > 0.8 THEN 'FAIR'
-        ELSE 'POOR'
-    END as power_quality_level,
-    CURRENT_TIMESTAMP as created_at
-FROM fluss_ods_power_monitoring;
-
--- 启动设备告警DWD数据流
-INSERT INTO fluss_dwd_equipment_alarms
-SELECT 
-    alarm_id,
-    equipment_id,
-    alarm_type,
-    alarm_level,
-    alarm_message,
-    alarm_code,
-    is_resolved,
-    occurred_at,
-    resolved_at,
-    CASE 
-        WHEN is_resolved = true THEN DATEDIFF(HOUR, occurred_at, resolved_at)
-        ELSE DATEDIFF(HOUR, occurred_at, CURRENT_TIMESTAMP)
-    END as resolution_time_hours,
-    CASE 
-        WHEN alarm_level = 1 THEN 'INFO'
-        WHEN alarm_level = 2 THEN 'WARNING'
-        WHEN alarm_level = 3 THEN 'ERROR'
-        ELSE 'CRITICAL'
-    END as alarm_severity,
-    CASE 
-        WHEN alarm_type LIKE '%电压%' THEN 'VOLTAGE'
-        WHEN alarm_type LIKE '%电流%' THEN 'CURRENT'
-        WHEN alarm_type LIKE '%温度%' THEN 'TEMPERATURE'
-        WHEN alarm_type LIKE '%频率%' THEN 'FREQUENCY'
-        ELSE 'OTHER'
-    END as alarm_category,
+    id as user_id,
+    username,
+    email,
     created_at,
     updated_at,
-    CURRENT_TIMESTAMP as processed_at
-FROM fluss_ods_equipment_alarms; 
+    CURRENT_TIMESTAMP as etl_time
+FROM ods_users;
+
+-- 订单明细数据加工 - 关联用户信息
+INSERT INTO dwd_orders
+SELECT 
+    o.id as order_id,
+    o.user_id,
+    u.username,
+    u.email,
+    o.order_amount,
+    o.order_status,
+    o.created_at,
+    o.updated_at,
+    CURRENT_TIMESTAMP as etl_time
+FROM ods_orders o
+LEFT JOIN ods_users u ON o.user_id = u.id;
+
+-- 订单商品明细数据加工 - 关联用户和订单信息
+INSERT INTO dwd_order_items
+SELECT 
+    oi.id as item_id,
+    oi.order_id,
+    o.user_id,
+    u.username,
+    oi.product_name,
+    oi.quantity,
+    oi.unit_price,
+    (oi.quantity * oi.unit_price) as total_price,
+    oi.created_at,
+    CURRENT_TIMESTAMP as etl_time
+FROM ods_order_items oi
+LEFT JOIN ods_orders o ON oi.order_id = o.id
+LEFT JOIN ods_users u ON o.user_id = u.id;
+
+-- 创建实时DWD数据视图
+CREATE VIEW IF NOT EXISTS dwd_user_orders AS
+SELECT 
+    u.user_id,
+    u.username,
+    u.email,
+    o.order_id,
+    o.order_amount,
+    o.order_status,
+    o.created_at as order_time,
+    CURRENT_TIMESTAMP as etl_time
+FROM dwd_users u
+JOIN dwd_orders o ON u.user_id = o.user_id;
+
+CREATE VIEW IF NOT EXISTS dwd_order_details AS
+SELECT 
+    o.order_id,
+    o.user_id,
+    o.username,
+    o.order_amount,
+    o.order_status,
+    oi.item_id,
+    oi.product_name,
+    oi.quantity,
+    oi.unit_price,
+    oi.total_price,
+    o.created_at as order_time,
+    CURRENT_TIMESTAMP as etl_time
+FROM dwd_orders o
+JOIN dwd_order_items oi ON o.order_id = oi.order_id;
+
+
+-- ===========================
+-- 第三步：DWS层 - 汇总数据层
+-- ===========================
+
+USE CATALOG fluss;
+
+-- ===========================
+-- 创建DWS层表：汇总数据层
+-- ===========================
+
+-- 用户订单统计表（DWS）
+CREATE TABLE IF NOT EXISTS dws_user_stats (
+    user_id INT,
+    username STRING,
+    total_orders BIGINT,
+    total_amount DECIMAL(12,2),
+    avg_order_amount DECIMAL(10,2),
+    last_order_date TIMESTAMP_LTZ(3),
+    etl_time TIMESTAMP_LTZ(3),
+    PRIMARY KEY (user_id) NOT ENFORCED
+) WITH (
+    'bucket.num' = '3'
+);
+
+-- 商品销售统计表（DWS）
+CREATE TABLE IF NOT EXISTS dws_product_stats (
+    product_name STRING,
+    total_quantity BIGINT,
+    total_sales DECIMAL(12,2),
+    total_orders BIGINT,
+    avg_price DECIMAL(10,2),
+    etl_time TIMESTAMP_LTZ(3),
+    PRIMARY KEY (product_name) NOT ENFORCED
+) WITH (
+    'bucket.num' = '3'
+);
+
+-- 每日订单统计表（DWS）
+CREATE TABLE IF NOT EXISTS dws_daily_stats (
+    stat_date DATE,
+    total_orders BIGINT,
+    total_amount DECIMAL(12,2),
+    completed_orders BIGINT,
+    pending_orders BIGINT,
+    etl_time TIMESTAMP_LTZ(3),
+    PRIMARY KEY (stat_date) NOT ENFORCED
+) WITH (
+    'bucket.num' = '3'
+);
+
+-- ===========================
+-- DWS层实时聚合逻辑
+-- ===========================
+
+-- 用户订单统计 - 实时聚合
+INSERT INTO dws_user_stats
+SELECT 
+    user_id,
+    username,
+    COUNT(*) as total_orders,
+    SUM(order_amount) as total_amount,
+    AVG(order_amount) as avg_order_amount,
+    MAX(created_at) as last_order_date,
+    CURRENT_TIMESTAMP as etl_time
+FROM dwd_orders
+GROUP BY user_id, username;
+
+-- 商品销售统计 - 实时聚合
+INSERT INTO dws_product_stats
+SELECT 
+    product_name,
+    SUM(quantity) as total_quantity,
+    SUM(total_price) as total_sales,
+    COUNT(DISTINCT order_id) as total_orders,
+    AVG(unit_price) as avg_price,
+    CURRENT_TIMESTAMP as etl_time
+FROM dwd_order_items
+GROUP BY product_name;
+
+-- 每日订单统计 - 实时聚合
+INSERT INTO dws_daily_stats
+SELECT 
+    DATE(created_at) as stat_date,
+    COUNT(*) as total_orders,
+    SUM(order_amount) as total_amount,
+    COUNT(CASE WHEN order_status = 'completed' THEN 1 END) as completed_orders,
+    COUNT(CASE WHEN order_status = 'pending' THEN 1 END) as pending_orders,
+    CURRENT_TIMESTAMP as etl_time
+FROM dwd_orders
+GROUP BY DATE(created_at);
+
+-- 创建实时统计视图
+CREATE VIEW IF NOT EXISTS dws_realtime_stats AS
+SELECT 
+    'total_users' as metric_name,
+    COUNT(DISTINCT user_id) as metric_value,
+    CURRENT_TIMESTAMP as update_time
+FROM dwd_users
+
+UNION ALL
+
+SELECT 
+    'total_orders' as metric_name,
+    COUNT(*) as metric_value,
+    CURRENT_TIMESTAMP as update_time
+FROM dwd_orders
+
+UNION ALL
+
+SELECT 
+    'total_sales' as metric_name,
+    SUM(order_amount) as metric_value,
+    CURRENT_TIMESTAMP as update_time
+FROM dwd_orders
+WHERE order_status = 'completed'
+
+UNION ALL
+
+SELECT 
+    'avg_order_value' as metric_name,
+    AVG(order_amount) as metric_value,
+    CURRENT_TIMESTAMP as update_time
+FROM dwd_orders
+WHERE order_status = 'completed';
+
+-- 创建实时商品销售排行视图
+CREATE VIEW IF NOT EXISTS dws_product_ranking AS
+SELECT 
+    product_name,
+    total_sales,
+    total_quantity,
+    total_orders,
+    RANK() OVER (ORDER BY total_sales DESC) as sales_rank,
+    CURRENT_TIMESTAMP as update_time
+FROM dws_product_stats;
+
+-- 创建实时用户价值分层视图
+CREATE VIEW IF NOT EXISTS dws_user_segments AS
+SELECT 
+    user_id,
+    username,
+    total_amount,
+    total_orders,
+    avg_order_amount,
+    CASE 
+        WHEN total_amount >= 500 THEN 'high_value'
+        WHEN total_amount >= 100 THEN 'medium_value'
+        ELSE 'low_value'
+    END as segment_type,
+    last_order_date,
+    CURRENT_TIMESTAMP as update_time
+FROM dws_user_stats;

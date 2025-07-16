@@ -1,0 +1,64 @@
+apiVersion: 1
+
+datasources:
+  # PostgreSQL 主数据源 - 连接到你的业务数据
+  - name: PostgreSQL-SGCC
+    type: postgres
+    access: proxy
+    url: host.docker.internal:5443
+    database: sgcc_dw_db
+    user: sgcc_user
+    secureJsonData:
+      password: sgcc_pass_2024
+    jsonData:
+      sslmode: disable
+      maxOpenConns: 100
+      maxIdleConns: 100
+      maxIdleConnsAuto: true
+      connMaxLifetime: 14400
+      postgresVersion: 1000
+      timescaledb: false
+    isDefault: true
+    editable: true
+
+  # PostgreSQL 备用数据源 (5443端口)
+  - name: PostgreSQL-SGCC-Backup
+    type: postgres
+    access: proxy
+    url: host.docker.internal:5442
+    database: sgcc_dw_db
+    user: sgcc_user
+    secureJsonData:
+      password: sgcc_pass_2024
+    jsonData:
+      sslmode: disable
+      maxOpenConns: 50
+      maxIdleConns: 50
+      maxIdleConnsAuto: true
+      connMaxLifetime: 14400
+      postgresVersion: 1000
+      timescaledb: false
+    editable: true
+
+  # Prometheus 系统监控数据源
+  - name: Prometheus
+    type: prometheus
+    access: proxy
+    url: http://prometheus:9090
+    isDefault: false
+    editable: true
+    jsonData:
+      httpMethod: POST
+      manageAlerts: true
+      prometheusType: Prometheus
+      prometheusVersion: 2.40.0
+      cacheLevel: 'High'
+      disableRecordingRules: false
+      incrementalQueryOverlapWindow: 10m
+
+  # TestData 数据源用于演示
+  - name: TestData DB
+    type: testdata
+    access: proxy
+    isDefault: false
+    editable: true 

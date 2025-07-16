@@ -1,0 +1,676 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🔋 国家电网智能调度指挥中心 | Fluss流批一体实时监控系统</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Microsoft YaHei', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+            color: #ffffff;
+            overflow: hidden;
+            height: 100vh;
+        }
+
+        .container {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr 1fr;
+            grid-template-rows: 80px 1fr 1fr 1fr;
+            gap: 10px;
+            padding: 10px;
+            height: 100vh;
+        }
+
+        /* 标题栏 */
+        .header {
+            grid-column: 1 / -1;
+            background: linear-gradient(90deg, #16213e 0%, #0f3460 100%);
+            border: 2px solid #4fb3d9;
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 20px;
+            box-shadow: 0 4px 20px rgba(79, 179, 217, 0.3);
+        }
+
+        .title {
+            font-size: 28px;
+            font-weight: bold;
+            color: #ffffff;
+            text-shadow: 0 2px 4px rgba(0,0,0,0.5);
+        }
+
+        .time {
+            font-size: 16px;
+            color: #4fb3d9;
+            background: rgba(15, 52, 96, 0.8);
+            padding: 5px 15px;
+            border-radius: 20px;
+            border: 1px solid #4fb3d9;
+        }
+
+        .fluss-badge {
+            background: linear-gradient(45deg, #e74c3c, #c0392b);
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: bold;
+            text-align: center;
+            border: 1px solid #c0392b;
+            box-shadow: 0 2px 10px rgba(231, 76, 60, 0.3);
+        }
+
+        /* 卡片样式 */
+        .card {
+            background: linear-gradient(145deg, #2c3e50 0%, #34495e 100%);
+            border-radius: 15px;
+            padding: 20px;
+            border: 2px solid transparent;
+            position: relative;
+            overflow: hidden;
+            transition: all 0.3s ease;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+        }
+
+        .card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: linear-gradient(45deg, transparent, rgba(255,255,255,0.1), transparent);
+            transform: translateX(-100%);
+            transition: transform 0.6s;
+        }
+
+        .card:hover::before {
+            transform: translateX(100%);
+        }
+
+        .card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 12px 40px rgba(0, 0, 0, 0.4);
+        }
+
+        .card.success { border-color: #27ae60; }
+        .card.warning { border-color: #f39c12; }
+        .card.danger { border-color: #e74c3c; }
+        .card.info { border-color: #3498db; }
+        .card.purple { border-color: #9b59b6; }
+
+        .card-title {
+            font-size: 18px;
+            font-weight: bold;
+            margin-bottom: 15px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .card-value {
+            font-size: 32px;
+            font-weight: bold;
+            text-align: center;
+            margin: 20px 0;
+            text-shadow: 0 2px 4px rgba(0,0,0,0.5);
+        }
+
+        .card-status {
+            font-size: 14px;
+            text-align: center;
+            opacity: 0.8;
+        }
+
+        .card-detail {
+            font-size: 14px;
+            line-height: 1.6;
+            margin-top: 10px;
+        }
+
+        /* 进度条 */
+        .progress-bar {
+            width: 100%;
+            height: 8px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 4px;
+            overflow: hidden;
+            margin: 10px 0;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #27ae60, #2ecc71);
+            border-radius: 4px;
+            transition: width 0.5s ease;
+        }
+
+        .progress-fill.warning {
+            background: linear-gradient(90deg, #f39c12, #e67e22);
+        }
+
+        .progress-fill.danger {
+            background: linear-gradient(90deg, #e74c3c, #c0392b);
+        }
+
+        /* 图表容器 */
+        .chart-container {
+            width: 100%;
+            height: 150px;
+            background: rgba(0, 0, 0, 0.2);
+            border-radius: 10px;
+            margin: 15px 0;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .chart-line {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            width: 100%;
+            height: 2px;
+            background: linear-gradient(90deg, #3498db, #2980b9);
+            animation: wave 2s ease-in-out infinite;
+        }
+
+        @keyframes wave {
+            0%, 100% { transform: translateX(-100%); }
+            50% { transform: translateX(100%); }
+        }
+
+        /* 网格布局 */
+        .grid-overview { grid-column: 1 / 3; }
+        .grid-map { grid-column: 3 / 5; }
+        .grid-fluss { grid-column: 1 / 3; }
+        .grid-metrics { grid-column: 3 / 5; }
+        .grid-devices { grid-column: 1 / 3; }
+        .grid-ai { grid-column: 3 / 5; }
+
+        /* 区域电网状态 */
+        .region-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+            margin: 10px 0;
+        }
+
+        .region-item {
+            background: rgba(0, 0, 0, 0.3);
+            border-radius: 8px;
+            padding: 15px;
+            text-align: center;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            transition: all 0.3s ease;
+        }
+
+        .region-item:hover {
+            background: rgba(0, 0, 0, 0.5);
+            transform: scale(1.05);
+        }
+
+        .region-item.healthy {
+            border-color: #27ae60;
+            box-shadow: 0 0 10px rgba(39, 174, 96, 0.3);
+        }
+
+        .region-item.warning {
+            border-color: #f39c12;
+            box-shadow: 0 0 10px rgba(243, 156, 18, 0.3);
+        }
+
+        /* Fluss架构优势 */
+        .fluss-advantages {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr;
+            gap: 10px;
+            margin: 15px 0;
+        }
+
+        .advantage-item {
+            background: rgba(0, 0, 0, 0.3);
+            border-radius: 8px;
+            padding: 15px;
+            text-align: center;
+            border: 1px solid;
+            transition: all 0.3s ease;
+        }
+
+        .advantage-item:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 5px 20px rgba(0, 0, 0, 0.4);
+        }
+
+        .advantage-second { border-color: #e74c3c; }
+        .advantage-minute { border-color: #f39c12; }
+        .advantage-hour { border-color: #9b59b6; }
+
+        /* 数据流动画 */
+        .data-flow {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin: 20px 0;
+            padding: 15px;
+            background: rgba(0, 0, 0, 0.3);
+            border-radius: 10px;
+            border: 1px solid #3498db;
+        }
+
+        .flow-item {
+            flex: 1;
+            text-align: center;
+            padding: 10px;
+            position: relative;
+        }
+
+        .flow-item::after {
+            content: '→';
+            position: absolute;
+            right: -20px;
+            top: 50%;
+            transform: translateY(-50%);
+            color: #3498db;
+            font-size: 20px;
+            animation: flow 1s ease-in-out infinite;
+        }
+
+        .flow-item:last-child::after {
+            display: none;
+        }
+
+        @keyframes flow {
+            0%, 100% { opacity: 0.5; transform: translateY(-50%) translateX(0); }
+            50% { opacity: 1; transform: translateY(-50%) translateX(5px); }
+        }
+
+        /* 响应式设计 */
+        @media (max-width: 1200px) {
+            .container {
+                grid-template-columns: 1fr 1fr;
+                grid-template-rows: 80px repeat(6, 1fr);
+            }
+            
+            .grid-overview, .grid-map, .grid-fluss, .grid-metrics, .grid-devices, .grid-ai {
+                grid-column: span 1;
+            }
+        }
+
+        /* 滚动文本 */
+        .scroll-text {
+            white-space: nowrap;
+            overflow: hidden;
+            animation: scroll 20s linear infinite;
+        }
+
+        @keyframes scroll {
+            0% { transform: translateX(100%); }
+            100% { transform: translateX(-100%); }
+        }
+
+        /* 闪烁效果 */
+        .blink {
+            animation: blink 1s ease-in-out infinite;
+        }
+
+        @keyframes blink {
+            0%, 50% { opacity: 1; }
+            51%, 100% { opacity: 0.5; }
+        }
+
+        /* 数值更新动画 */
+        .value-update {
+            animation: valueUpdate 0.5s ease-in-out;
+        }
+
+        @keyframes valueUpdate {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.1); color: #3498db; }
+            100% { transform: scale(1); }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- 标题栏 -->
+        <div class="header">
+            <div class="fluss-badge">
+                🚀 Powered by Fluss<br>
+                流批一体 | 统一架构
+            </div>
+            <div class="title">
+                🔋 国家电网智能调度指挥中心 | Fluss流批一体实时监控系统
+            </div>
+            <div class="time" id="currentTime">
+                ⏰ 2025-01-14 14:25:33
+            </div>
+        </div>
+
+        <!-- 全国电网实时概览 -->
+        <div class="card success grid-overview">
+            <div class="card-title">🔌 全国电网实时概览</div>
+            <div class="region-grid">
+                <div class="region-item healthy">
+                    <div style="font-size: 24px;">📊 当前负荷</div>
+                    <div class="card-value" style="font-size: 28px;" id="currentLoad">23,580 MW</div>
+                    <div class="card-status">🟢 正常范围</div>
+                </div>
+                <div class="region-item healthy">
+                    <div style="font-size: 24px;">⚡ 发电容量</div>
+                    <div class="card-value" style="font-size: 28px;" id="generation">25,120 MW</div>
+                    <div class="card-status">🔵 供应充足</div>
+                </div>
+                <div class="region-item healthy">
+                    <div style="font-size: 24px;">📈 电网频率</div>
+                    <div class="card-value" style="font-size: 28px;" id="frequency">50.02 Hz</div>
+                    <div class="card-status">✅ 稳定运行</div>
+                </div>
+                <div class="region-item healthy">
+                    <div style="font-size: 24px;">⚡ 电压稳定性</div>
+                    <div class="card-value" style="font-size: 28px;" id="voltage">98.5%</div>
+                    <div class="card-status">🟢 优秀状态</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 区域负荷分布图 -->
+        <div class="card info grid-map">
+            <div class="card-title">🗺️ 全国电网负荷分布图</div>
+            <div class="region-grid">
+                <div class="region-item healthy">
+                    <div>华北电网</div>
+                    <div class="card-value" style="font-size: 20px;">6,890MW</div>
+                    <div class="card-status">🟢 98.2%</div>
+                </div>
+                <div class="region-item warning">
+                    <div>华东电网</div>
+                    <div class="card-value" style="font-size: 20px;">8,450MW</div>
+                    <div class="card-status">🟡 95.7%</div>
+                </div>
+                <div class="region-item healthy">
+                    <div>华南电网</div>
+                    <div class="card-value" style="font-size: 20px;">5,240MW</div>
+                    <div class="card-status">🟢 97.8%</div>
+                </div>
+                <div class="region-item healthy">
+                    <div>西北电网</div>
+                    <div class="card-value" style="font-size: 20px;">3,000MW</div>
+                    <div class="card-status">🟢 99.1%</div>
+                </div>
+            </div>
+            <div class="chart-container">
+                <div class="chart-line"></div>
+            </div>
+        </div>
+
+        <!-- Fluss流批一体架构优势 -->
+        <div class="card purple grid-fluss">
+            <div class="card-title">🚀 Fluss流批一体架构优势</div>
+            <div class="fluss-advantages">
+                <div class="advantage-item advantage-second">
+                    <div style="font-size: 16px;">⚡ 秒级处理</div>
+                    <div class="card-value" style="font-size: 18px;" id="secondMetric">10,000 QPS</div>
+                    <div class="card-status">🔥 vs Kafka: 5倍提升</div>
+                </div>
+                <div class="advantage-item advantage-minute">
+                    <div style="font-size: 16px;">📊 分钟级聚合</div>
+                    <div class="card-value" style="font-size: 18px;" id="minuteMetric">自动汇总</div>
+                    <div class="card-status">🔥 vs Kafka: 无需ETL</div>
+                </div>
+                <div class="advantage-item advantage-hour">
+                    <div style="font-size: 16px;">🧠 小时级分析</div>
+                    <div class="card-value" style="font-size: 18px;" id="hourMetric">AI建议</div>
+                    <div class="card-status">🔥 vs Kafka: 统一平台</div>
+                </div>
+            </div>
+            <div class="data-flow">
+                <div class="flow-item">
+                    <div>PostgreSQL CDC</div>
+                    <div style="font-size: 12px; opacity: 0.8;">源数据</div>
+                </div>
+                <div class="flow-item">
+                    <div>Fluss ODS</div>
+                    <div style="font-size: 12px; opacity: 0.8;">原始层</div>
+                </div>
+                <div class="flow-item">
+                    <div>Fluss DWD</div>
+                    <div style="font-size: 12px; opacity: 0.8;">明细层</div>
+                </div>
+                <div class="flow-item">
+                    <div>Fluss DWS</div>
+                    <div style="font-size: 12px; opacity: 0.8;">汇总层</div>
+                </div>
+                <div class="flow-item">
+                    <div>Fluss ADS</div>
+                    <div style="font-size: 12px; opacity: 0.8;">应用层</div>
+                </div>
+                <div class="flow-item">
+                    <div>实时大屏</div>
+                    <div style="font-size: 12px; opacity: 0.8;">可视化</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 实时性能指标 -->
+        <div class="card danger grid-metrics">
+            <div class="card-title">📊 Fluss实时性能指标</div>
+            <div class="card-detail">
+                <div style="margin-bottom: 15px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <span>⚡ 数据摄取速度</span>
+                        <span id="ingestSpeed" class="value-update">18,000 records/sec</span>
+                    </div>
+                    <div class="progress-bar">
+                        <div class="progress-fill" style="width: 90%"></div>
+                    </div>
+                </div>
+                <div style="margin-bottom: 15px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <span>🚀 处理延迟</span>
+                        <span id="latency" class="value-update">23ms</span>
+                    </div>
+                    <div class="progress-bar">
+                        <div class="progress-fill" style="width: 95%"></div>
+                    </div>
+                </div>
+                <div style="margin-bottom: 15px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <span>💾 存储效率</span>
+                        <span id="storage" class="value-update">85%</span>
+                    </div>
+                    <div class="progress-bar">
+                        <div class="progress-fill" style="width: 85%"></div>
+                    </div>
+                </div>
+                <div style="margin-bottom: 15px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <span>📈 查询响应</span>
+                        <span id="queryResponse" class="value-update">&lt;100ms</span>
+                    </div>
+                    <div class="progress-bar">
+                        <div class="progress-fill" style="width: 98%"></div>
+                    </div>
+                </div>
+            </div>
+            <div class="card-status">
+                <div class="blink">🎯 vs Kafka: 10-20倍性能提升</div>
+            </div>
+        </div>
+
+        <!-- 关键设备监控 -->
+        <div class="card warning grid-devices">
+            <div class="card-title">🔧 关键设备实时监控</div>
+            <div class="card-detail">
+                <div style="margin-bottom: 10px;">
+                    <span style="color: #27ae60;">🟢</span> 变压器T001: 运行正常 | 负荷:89% | 温度:45°C
+                </div>
+                <div style="margin-bottom: 10px;">
+                    <span style="color: #27ae60;">🟢</span> 发电机G001: 运行正常 | 效率:97.8% | 振动:正常
+                </div>
+                <div style="margin-bottom: 10px;">
+                    <span style="color: #f39c12;">🟡</span> 配电设备D002: 需要维护 | 效率:89.2% | 预计7天
+                </div>
+                <div style="margin-bottom: 10px;">
+                    <span style="color: #27ae60;">🟢</span> 开关设备S001: 运行正常 | 响应:12ms | 状态:在线
+                </div>
+                <div style="margin-bottom: 10px;">
+                    <span style="color: #27ae60;">🟢</span> 监控设备M001: 运行正常 | 精度:99.2% | 通信:正常
+                </div>
+            </div>
+            <div class="card-status">
+                <div>💚 设备健康度: 96.8% | 在线: 2,847台 | 离线: 23台</div>
+            </div>
+        </div>
+
+        <!-- AI智能决策中心 -->
+        <div class="card success grid-ai">
+            <div class="card-title">🤖 AI智能决策中心</div>
+            <div class="region-grid">
+                <div class="region-item healthy">
+                    <div>🧠 待执行决策</div>
+                    <div class="card-value" style="font-size: 24px;" id="pendingDecisions">3条</div>
+                    <div class="card-status">置信度: 95%</div>
+                </div>
+                <div class="region-item healthy">
+                    <div>✅ 已执行决策</div>
+                    <div class="card-value" style="font-size: 24px;" id="executedDecisions">28条</div>
+                    <div class="card-status">成功率: 94.6%</div>
+                </div>
+            </div>
+            <div class="card-detail">
+                <div style="margin-bottom: 10px;">
+                    <span style="color: #3498db;">✨</span> 建议增加备用发电机组(置信度:95%)
+                </div>
+                <div style="margin-bottom: 10px;">
+                    <span style="color: #f39c12;">⚡</span> 建议优化华东电网调度策略
+                </div>
+                <div style="margin-bottom: 10px;">
+                    <span style="color: #e74c3c;">🔧</span> 建议对设备D002进行预防性维护
+                </div>
+                <div style="margin-bottom: 10px;">
+                    <span style="color: #27ae60;">💡</span> 建议实施负荷转移至西北电网
+                </div>
+            </div>
+            <div class="card-status">
+                <div>🎯 AI决策优化: 节约成本 ¥456,780/日</div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // 更新当前时间
+        function updateTime() {
+            const now = new Date();
+            const timeString = now.toLocaleString('zh-CN', {
+                year: 'numeric',
+                month: '2-digit',
+                day: '2-digit',
+                hour: '2-digit',
+                minute: '2-digit',
+                second: '2-digit'
+            });
+            document.getElementById('currentTime').textContent = `⏰ ${timeString}`;
+        }
+
+        // 模拟数据更新
+        function updateMetrics() {
+            const metrics = {
+                currentLoad: () => (23000 + Math.random() * 1000).toFixed(0),
+                generation: () => (25000 + Math.random() * 500).toFixed(0),
+                frequency: () => (50 + (Math.random() - 0.5) * 0.1).toFixed(2),
+                voltage: () => (98 + Math.random() * 2).toFixed(1),
+                secondMetric: () => (10000 + Math.random() * 2000).toFixed(0),
+                ingestSpeed: () => (18000 + Math.random() * 2000).toFixed(0),
+                latency: () => (20 + Math.random() * 10).toFixed(0),
+                storage: () => (85 + Math.random() * 5).toFixed(1),
+                queryResponse: () => '<' + (90 + Math.random() * 20).toFixed(0),
+                pendingDecisions: () => Math.floor(Math.random() * 5) + 1,
+                executedDecisions: () => Math.floor(Math.random() * 10) + 25
+            };
+
+            Object.keys(metrics).forEach(key => {
+                const element = document.getElementById(key);
+                if (element) {
+                    const newValue = metrics[key]();
+                    element.textContent = key.includes('Load') || key.includes('generation') ? 
+                        `${newValue} MW` : 
+                        key.includes('frequency') ? `${newValue} Hz` :
+                        key.includes('voltage') || key.includes('storage') ? `${newValue}%` :
+                        key.includes('latency') ? `${newValue}ms` :
+                        key.includes('queryResponse') ? `${newValue}ms` :
+                        key.includes('secondMetric') ? `${newValue} QPS` :
+                        key.includes('ingestSpeed') ? `${newValue} records/sec` :
+                        key.includes('Decisions') ? `${newValue}条` :
+                        newValue;
+                    
+                    element.classList.add('value-update');
+                    setTimeout(() => element.classList.remove('value-update'), 500);
+                }
+            });
+        }
+
+        // 添加鼠标悬停效果
+        document.querySelectorAll('.card').forEach(card => {
+            card.addEventListener('mouseenter', function() {
+                this.style.borderColor = '#4fb3d9';
+                this.style.boxShadow = '0 0 20px rgba(79, 179, 217, 0.5)';
+            });
+            
+            card.addEventListener('mouseleave', function() {
+                this.style.borderColor = '';
+                this.style.boxShadow = '';
+            });
+        });
+
+        // 初始化和定时更新
+        updateTime();
+        updateMetrics();
+        
+        setInterval(updateTime, 1000);
+        setInterval(updateMetrics, 3000);
+
+        // 添加键盘快捷键
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'F11') {
+                e.preventDefault();
+                if (document.fullscreenElement) {
+                    document.exitFullscreen();
+                } else {
+                    document.documentElement.requestFullscreen();
+                }
+            }
+        });
+
+        // 添加页面加载动画
+        window.addEventListener('load', function() {
+            document.querySelectorAll('.card').forEach((card, index) => {
+                card.style.opacity = '0';
+                card.style.transform = 'translateY(50px)';
+                setTimeout(() => {
+                    card.style.transition = 'all 0.5s ease';
+                    card.style.opacity = '1';
+                    card.style.transform = 'translateY(0)';
+                }, index * 100);
+            });
+        });
+
+        // 添加点击音效模拟
+        document.querySelectorAll('.card').forEach(card => {
+            card.addEventListener('click', function() {
+                this.style.transform = 'scale(0.98)';
+                setTimeout(() => {
+                    this.style.transform = '';
+                }, 100);
+            });
+        });
+    </script>
+</body>
+</html> 
