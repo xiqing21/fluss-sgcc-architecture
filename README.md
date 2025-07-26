@@ -1,4 +1,5 @@
 # Fluss SGCC 智能电网实时数据处理架构
+请移步至 https://github.com/xiqing21/fluss-architecture-sgcc-project 本人这个仓库来测试，修复了各种bug并在 readme 里增加了新手友好的一键启动说明，请大家多多支持谢谢
 
 基于 Fluss 流式存储的国家电网智能调度系统演示项目，展示流批一体、即席查询、原生UPSERT等核心特性。
 
